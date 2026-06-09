@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  server:
+    build: .
+    command: >
+      sh -c "python -m utils.cert_gen &&
+             echo '=== Сертификаты сгенерированы ===' &&
+             python server.py"
+    ports:
+      - "8443:8443"
+      - "8444:8444"
+    volumes:
+      - certs:/app/certs
+
+  demo:
+    build: .
+    command: python demo_client.py
+    volumes:
+      - certs:/app/certs
+    depends_on:
+      - server
+    environment:
+      SERVER_HOST: server
+      SERVER_PORT: "8443"
+      CERTS_DIR: certs
+
+volumes:
+  certs:
