@@ -5,9 +5,11 @@
 запуск TUN-туннеля. Реализует полный цикл работы клиента с автоматическим
 восстановлением соединения.
 
+Платформы: Linux (Astra Linux SE 1.7+) и Windows 10/11 (с wintun.dll).
+
 Порядок запуска:
-  1. Проверка прав root
-  2. Загрузка конфигурации (bootstrap → кэш)
+  1. Проверка прав администратора
+  2. Загрузка конфигурации (bootstrap → кеш)
   3. Настройка логирования
   4. Загрузка сертификатов
   5. Выполнение рукопожатия (аутентификация + выработка ключей)
@@ -17,8 +19,8 @@
   9. Автоматическое восстановление при обрыве
 
 Реализуемые требования:
-  ФТ-1..ж — все функциональные требования
-  НФТ-1   — Astra Linux SE 1.7
+  ФТ-1..6 — все функциональные требования
+  НФТ-1   — Astra Linux SE 1.7 / Windows 10+
   НФТ-3   — asyncio для ввода-вывода
 """
 
@@ -33,21 +35,35 @@ from vpn_core.config_manager import ConfigManager
 from vpn_core.protocol import FrameCodec
 from vpn_core.pygost_provider import PygostProvider
 from vpn_core.session import Session, SessionConfig
-from vpn_core.tunnel import TunInterface, VpnTunnel, connect_with_retry
+from vpn_core.tunnel import create_tun_interface, VpnTunnel, connect_with_retry
 from utils.logger import get_logger, setup_logger
 from utils.zeroize import secure_context
 
 _log = get_logger("main")
 
 
-def check_root() -> None:
-    """Проверяет запуск от имени root. При несоответствии — завершение."""
-    if os.geteuid() != 0:
-        print(
-            "ОШИБКА: VPN-клиент должен быть запущен от имени root (CAP_NET_ADMIN).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+def check_admin() -> None:
+    """
+    Проверяет наличие прав администратора/root.
+    Linux: os.geteuid() == 0
+    Windows: IsUserAnAdmin() через ctypes
+    """
+    if sys.platform == "win32":
+        import ctypes
+        if not ctypes.windll.shell32.IsUserAnAdmin():
+            print(
+                "ОШИБКА: VPN-клиент должен быть запущен от имени Администратора "
+                "(требуется для управления WinTun-адаптером).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        if os.geteuid() != 0:
+            print(
+                "ОШИБКА: VPN-клиент должен быть запущен от имени root (CAP_NET_ADMIN).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
 
 def load_cert_and_key(cert_path: str, key_path: str) -> tuple[bytes, bytes]:
@@ -80,12 +96,14 @@ async def perform_handshake(
     :param auth:   объект аутентификатора
     :return: (session_id, enc_key, mac_key, peer_pub) или None при ошибке
     """
+    # Шаг 1: ClientHello
     hello_bytes, eph_kp, ukm = auth.build_client_hello()
     length_prefix = struct.pack("!H", len(hello_bytes))
     writer.write(length_prefix + hello_bytes)
     await writer.drain()
     _log.info("ClientHello отправлен")
 
+    # Шаг 2: Получение ServerHello
     try:
         len_bytes = await asyncio.wait_for(reader.readexactly(2), timeout=30.0)
         server_hello_len = struct.unpack("!H", len_bytes)[0]
@@ -96,11 +114,13 @@ async def perform_handshake(
         _log.error("Таймаут или обрыв при получении ServerHello: %s", exc)
         return None
 
+    # Шаг 3: Обработка ServerHello, проверка сертификата и выработка ключей
     auth_result = auth.process_server_hello(server_hello, eph_kp, ukm)
     if auth_result is None:
         _log.error("Рукопожатие не выполнено: ошибка аутентификации сервера")
         return None
 
+    # Шаг 4: ClientFinished (наша подпись)
     finished = auth.build_client_finished(
         auth_result.session_id, auth_result.peer_public_key
     )
@@ -123,6 +143,7 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
 
     :param config_path: путь к bootstrap-конфигурации
     """
+    # Инициализация конфигурации
     cfg_mgr = ConfigManager(config_path)
     config = cfg_mgr.initialize()
 
@@ -132,8 +153,8 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
     )
     _log.info("=== VPN-клиент Роскомнадзора v1.0 запущен ===")
 
+    # Загрузка сертификатов и ключа
     try:
-        ca_cert_der, _ = load_cert_and_key(config.ca_cert_path, "/dev/null")
         with open(config.ca_cert_path, "rb") as f:
             ca_cert_der = f.read()
         client_cert_der, client_prv_key = load_cert_and_key(
@@ -146,8 +167,10 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
         )
         sys.exit(2)
 
+    # Инициализация криптопровайдера
     crypto = PygostProvider()
 
+    # Аутентификатор
     with secure_context(client_prv_key) as prv_buf:
         auth = Authenticator(
             crypto=crypto,
@@ -156,9 +179,11 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
             ca_cert_der=ca_cert_der,
         )
 
+        # Кодек кадров
         codec = FrameCodec(crypto)
 
-        tun = TunInterface(iface_name=config.tun_interface)
+        # TUN-интерфейс (Linux: LinuxTunInterface, Windows: WindowsTunInterface)
+        tun = create_tun_interface(config.tun_interface)
 
         try:
             tun.open()
@@ -171,6 +196,7 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
             _log.error("Ошибка создания TUN-интерфейса: %s", exc)
             sys.exit(3)
 
+        # Главный цикл с поддержкой переаутентификации
         session_obj: Optional[Session] = None
 
         try:
@@ -190,6 +216,7 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
                     await asyncio.sleep(config.reconnect_timeout)
                     continue
 
+                # Рукопожатие
                 result = await perform_handshake(reader, writer, auth)
                 if result is None:
                     writer.close()
@@ -198,9 +225,11 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
 
                 session_id, enc_key, mac_key, peer_pub = result
 
+                # Pull конфигурации с сервера управления
                 session_token = f"{session_id:08x}"
                 cfg_mgr.update_from_server(session_token)
 
+                # Создание сессии
                 sess_config = SessionConfig(
                     session_lifetime=config.session_lifetime,
                     rekey_interval=config.rekey_interval,
@@ -216,16 +245,18 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
                     crypto=crypto,
                 )
 
+                # Запуск туннеля
                 tunnel = VpnTunnel(
                     session=session_obj,
                     codec=codec,
-                    tun_fd=tun._fd,
+                    tun=tun,
                     reader=reader,
                     writer=writer,
                     keepalive_interval=config.keepalive_interval,
                 )
                 await tunnel.run()
 
+                # Если сессия истекла — полная переаутентификация (новый итерация)
                 if session_obj.is_expired():
                     _log.info("Сессия истекла. Полная переаутентификация.")
                     session_obj.close()
@@ -233,6 +264,7 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
                     writer.close()
                     continue
 
+                # Иначе — выход из цикла (штатное завершение или неустранимая ошибка)
                 session_obj.close()
                 writer.close()
                 break
@@ -246,14 +278,19 @@ async def run_vpn_client(config_path: str = "config_bootstrap.json") -> None:
 
 
 def main() -> None:
-    """Точка входа: проверка root, парсинг аргументов, запуск asyncio."""
-    check_root()
+    """Точка входа: проверка прав, парсинг аргументов, запуск asyncio."""
+    check_admin()
 
     config_path = "config_bootstrap.json"
     if len(sys.argv) > 1:
         config_path = sys.argv[1]
 
+    # Предварительная настройка логгера до чтения конфига
     setup_logger("INFO")
+
+    # Windows требует ProactorEventLoop для asyncio (поддержка subprocess и pipes)
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     try:
         asyncio.run(run_vpn_client(config_path))

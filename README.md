@@ -2,6 +2,8 @@
 
 **Статус:** Прототип. Готов к передаче на сертификационные испытания по ПКЗ-2005 (Приказ ФСБ №66).
 
+**Платформы:** Linux (Astra Linux SE «Смоленск» 1.7+) и Windows 10/11 (64-бит).
+
 ## Архитектурная схема
 
 ```
@@ -14,10 +16,10 @@
      │           │                              │
 ┌────▼──────┐  ┌─▼─────────────┐  ┌────────────▼──────────┐
 │ config_   │  │ auth.py        │  │ tunnel.py              │
-│ manager   │  │ Аутентификация │  │ TUN + asyncio-циклы    │
-│ .py       │  │ X.509 + ECDH   │  │ TUN→Server, Server→TUN │
-│ Pull с    │  │ Верификация    │  │ Keepalive, Rekey-монит.│
-│ сервера   │  │ цепочки УЦ     │  │                        │
+│ manager   │  │ Аутентификация │  │ TunInterface (ABC)     │
+│ .py       │  │ X.509 + ECDH   │  │ LinuxTunInterface      │
+│ Pull с    │  │ Верификация    │  │ WindowsTunInterface    │
+│ сервера   │  │ цепочки УЦ     │  │ VpnTunnel (asyncio)    │
 └────┬──────┘  └────┬──────────┘  └───────────┬────────────┘
      │              │                          │
      │         ┌────▼──────────────────────────▼──────────┐
@@ -58,7 +60,7 @@
 | ФТ-4 | Full-tunnel через TUN, asyncio-циклы | `tunnel.py` | ✓ |
 | ФТ-5 | Восстановление соединения, экспоненциальный backoff | `session.py`, `tunnel.py` | ✓ |
 | ФТ-6 | Pull конфигурации с сервера управления | `config_manager.py` | ✓ |
-| НФТ-1 | Astra Linux SE 1.7, без проприетарных компонент | Весь проект | ✓ |
+| НФТ-1 | Astra Linux SE 1.7 / Windows 10+, без проприетарных компонент | Весь проект | ✓ |
 | НФТ-2 | Только pygost, без OpenSSL | `pygost_provider.py` | ✓ |
 | НФТ-3 | asyncio I/O, целевая нагрузка ≥100 Мбит/с | `tunnel.py` | ✓ |
 | НФТ-4 | Разделение слоёв, комментарии RU, затирание ключей | Весь проект | ✓ |
@@ -77,8 +79,11 @@
 vpn_gov_client/
 ├── config_bootstrap.json    # Начальная конфигурация (bootstrap)
 ├── requirements.txt         # pygost==5.0.0
-├── main.py                  # Точка входа клиента
+├── main.py                  # Точка входа клиента (Linux + Windows)
 ├── server.py                # Сервер-заглушка для тестирования
+├── demo_client.py           # Демо без TUN (docker-compose up)
+├── Dockerfile               # Контейнер для демонстрации
+├── docker-compose.yml       # server + demo_client
 ├── vpn_core/
 │   ├── __init__.py
 │   ├── crypto_interface.py  # Абстракция CryptoProvider (НФТ-5)
@@ -86,7 +91,7 @@ vpn_gov_client/
 │   ├── protocol.py          # Фреймирование кадров, replay-защита (ФТ-1, ФТ-3, А)
 │   ├── auth.py              # Аутентификация X.509, ECDH, KDF (ФТ-2)
 │   ├── session.py           # Сессия, rekeying, восстановление (ФТ-5, Б)
-│   ├── tunnel.py            # TUN, asyncio-циклы (ФТ-4, НФТ-3)
+│   ├── tunnel.py            # TUN Linux+Windows, asyncio-циклы (ФТ-4, НФТ-3)
 │   └── config_manager.py    # Конфигурация, pull, кеш (ФТ-6, Г)
 ├── utils/
 │   ├── __init__.py
@@ -113,41 +118,67 @@ vpn_gov_client/
 
 ## Установка и запуск
 
-### 1. Требования к системе
+### Вариант А: Docker (кросс-платформенная демонстрация, без TUN)
 
-- Astra Linux Special Edition «Смоленск» 1.7 или совместимая Linux-система
+Работает на любой ОС с Docker. Демонстрирует полный VPN-стек (рукопожатие +
+шифрование ГОСТ + имитозащита) без реального TUN-интерфейса.
+
+```bash
+git clone https://github.com/altzolotko/myapp.git
+cd myapp
+git checkout claude/lucid-lamport-gejwan
+docker-compose up
+```
+
+### Вариант Б: Linux (Astra Linux SE 1.7 / Ubuntu 20.04+)
+
+#### Требования
 - Python 3.10+
-- Запуск от root (требуется CAP_NET_ADMIN для TUN)
+- Запуск от root (CAP_NET_ADMIN для /dev/net/tun)
 
-### 2. Установка зависимостей
+#### Установка
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 3. Генерация тестовых сертификатов
-
-```bash
 python -m utils.cert_gen
-```
-
-Создаёт файлы в `certs/`: `ca.der`, `ca_key.bin`, `client.der`, `client_key.bin`, `server.der`, `server_key.bin`.
-
-### 4. Запуск сервера-заглушки
-
-```bash
-python server.py
-```
-
-Сервер запускается на `0.0.0.0:8443` (VPN) и `0.0.0.0:8444` (управление).
-
-### 5. Запуск клиента
-
-```bash
+sudo python server.py &
 sudo python main.py config_bootstrap.json
 ```
 
-### 6. Запуск тестов
+### Вариант В: Windows 10/11 (64-бит)
+
+#### Требования
+- Python 3.10+ (64-бит)
+- Права Администратора (для WinTun-адаптера)
+- `wintun.dll` — виртуальный сетевой драйвер (тот же, что использует WireGuard)
+
+#### Установка wintun.dll
+
+1. Скачайте архив с официального сайта: **https://www.wintun.net/**
+2. Распакуйте архив
+3. Скопируйте файл `amd64\wintun.dll` в папку с программой (`myapp\`)
+
+```
+myapp/
+├── wintun.dll   ← сюда
+├── main.py
+└── ...
+```
+
+#### Запуск
+
+Откройте **PowerShell от имени Администратора**:
+
+```powershell
+pip install -r requirements.txt
+python -m utils.cert_gen
+# В отдельном окне Administrator PowerShell:
+python server.py
+# В основном окне:
+python main.py config_bootstrap.json
+```
+
+### Запуск тестов
 
 ```bash
 python -m pytest tests/ -v
@@ -158,7 +189,7 @@ python -m unittest discover tests/
 ## Криптографические алгоритмы
 
 | Функция | Алгоритм | Стандарт | Реализация |
-|---------|----------|----------|-----------|
+|---------|----------|----------|------------|
 | Шифрование | «Кузнечик» режим CTR | ГОСТ Р 34.12/34.13-2015 | pygost.gost3412/3413 |
 | Хэширование | «Стрибог-256» | ГОСТ Р 34.11-2012 | pygost.gost34112012 |
 | Имитозащита | HMAC-Стрибог-256 | RFC 2104 + ГОСТ Р 34.11-2012 | Ручная реализация |
