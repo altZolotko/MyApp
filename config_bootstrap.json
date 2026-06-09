@@ -1,0 +1,20 @@
+{
+  "server_ip": "10.0.0.1",
+  "server_port": 8443,
+  "ca_cert_path": "certs/ca.der",
+  "initial_cert_path": "certs/client.der",
+  "initial_key_path": "certs/client_key.bin",
+  "rekey_interval": 3600,
+  "rekey_bytes": 104857600,
+  "reconnect_timeout": 30,
+  "max_reconnect_attempts": 5,
+  "session_lifetime": 86400,
+  "log_level": "INFO",
+  "log_file": "/var/log/vpn_gov/client.log",
+  "mgmt_server_url": "http://10.0.0.1:8444",
+  "protected_subnets": ["10.0.0.0/8", "172.16.0.0/12"],
+  "tun_interface": "tun0",
+  "tun_address": "10.8.0.2",
+  "tun_netmask": "255.255.255.0",
+  "keepalive_interval": 30
+}

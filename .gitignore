@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.env
+config_cache.json
+certs/*.bin
+/var/log/vpn_gov/
+*.log
