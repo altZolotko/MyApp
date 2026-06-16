@@ -10,6 +10,6 @@ build/
 *.egg
 .env
 config_cache.json
-certs/*.bin
+certs/
 /var/log/vpn_gov/
 *.log
