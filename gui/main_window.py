@@ -47,6 +47,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from gui.power_button import PowerButton
+from gui.styles import COLORS
 from gui.vpn_worker import VpnWorker
 
 
@@ -60,17 +62,17 @@ class StatusDot(QWidget):
 
     States
     ------
-    idle        grey   #484f58  — static
-    connecting  yellow #e3b341  — fast pulse
-    connected   green  #3fb950  — slow pulse
-    error       red    #f85149  — static
+    idle        grey         — static
+    connecting  amber        — fast pulse
+    connected   brand accent — slow pulse
+    error       red          — static
     """
 
     _COLORS = {
-        "idle":       QColor("#484f58"),
-        "connecting": QColor("#e3b341"),
-        "connected":  QColor("#3fb950"),
-        "error":      QColor("#f85149"),
+        "idle":       QColor(COLORS["MUTED_DIM"]),
+        "connecting": QColor(COLORS["AMBER_2"]),
+        "connected":  QColor(COLORS["ACCENT_1"]),
+        "error":      QColor(COLORS["ERROR_1"]),
     }
 
     def __init__(self, diameter: int = 14, parent: QWidget = None):
@@ -175,17 +177,17 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self) -> None:
         self.setWindowTitle("VPN-клиент СКЗИ")
-        self.setMinimumSize(960, 660)
-        self.resize(1060, 720)
+        self.setMinimumSize(980, 900)
+        self.resize(1100, 960)
         # Window icon (generated programmatically)
         icon_pix = QPixmap(32, 32)
         icon_pix.fill(Qt.transparent)
         p = QPainter(icon_pix)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setBrush(QColor("#3fb950"))
+        p.setBrush(QColor(COLORS["ACCENT_1"]))
         p.setPen(Qt.NoPen)
         p.drawEllipse(4, 4, 24, 24)
-        p.setBrush(QColor("#0d1117"))
+        p.setBrush(QColor(COLORS["BG"]))
         p.drawEllipse(10, 10, 12, 12)
         p.end()
         self.setWindowIcon(QIcon(icon_pix))
@@ -260,8 +262,8 @@ class MainWindow(QMainWindow):
         self._log_edit = QTextEdit()
         self._log_edit.setObjectName("log")
         self._log_edit.setReadOnly(True)
-        self._log_edit.setMinimumHeight(180)
-        self._log_edit.setMaximumHeight(220)
+        self._log_edit.setMinimumHeight(150)
+        self._log_edit.setMaximumHeight(190)
         log_container_layout.addWidget(self._log_edit)
 
         root_layout.addWidget(log_container)
@@ -335,7 +337,7 @@ class MainWindow(QMainWindow):
         self._full_tunnel_info.setObjectName("key_label")
         self._full_tunnel_info.setWordWrap(True)
         self._full_tunnel_info.setStyleSheet(
-            "color: #e3b341; font-size: 11px; background: transparent;"
+            f"color: {COLORS['AMBER_1']}; font-size: 11px; background: transparent;"
         )
         self._full_tunnel_info.setVisible(False)
         layout.addWidget(self._full_tunnel_info)
@@ -346,109 +348,106 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # ── Connect button ──
-        self._connect_btn = QPushButton("ПОДКЛЮЧИТЬСЯ")
-        self._connect_btn.setFixedHeight(40)
-        self._connect_btn.clicked.connect(self._on_connect_clicked)
-        layout.addWidget(self._connect_btn)
-
         return panel
 
     # ── Right panel ─────────────────────────────────────────────────
+
+    def _build_stat_pill(self, badge_name: str, glyph: str, title_text: str):
+        pill = QFrame()
+        pill.setObjectName("stat_pill")
+        row = QHBoxLayout(pill)
+        row.setContentsMargins(14, 10, 14, 10)
+        row.setSpacing(12)
+
+        badge = QLabel(glyph)
+        badge.setObjectName(badge_name)
+        badge.setFixedSize(28, 28)
+        badge.setAlignment(Qt.AlignCenter)
+        row.addWidget(badge)
+
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        title = QLabel(title_text)
+        title.setObjectName("key_label")
+        value = QLabel("0 B")
+        value.setObjectName("stat_value")
+        packets = QLabel("0 пакетов")
+        packets.setObjectName("key_label")
+        col.addWidget(title)
+        col.addWidget(value)
+        col.addWidget(packets)
+        row.addLayout(col)
+        row.addStretch()
+
+        return pill, value, packets
 
     def _build_right_panel(self) -> QVBoxLayout:
         layout = QVBoxLayout()
         layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Status card
-        status_card = QFrame()
-        status_card.setObjectName("card")
-        sc_layout = QVBoxLayout(status_card)
-        sc_layout.setContentsMargins(16, 12, 16, 12)
-        sc_layout.setSpacing(8)
+        # ── Hero card: status, big timer, power button, session id ──
+        hero_card = QFrame()
+        hero_card.setObjectName("card")
+        hero_layout = QVBoxLayout(hero_card)
+        hero_layout.setContentsMargins(24, 20, 24, 20)
+        hero_layout.setSpacing(4)
 
-        status_title_row = QHBoxLayout()
-        self._status_dot = StatusDot(20)
-        self._status_text = QLabel("НЕ ПОДКЛЮЧЕНО")
-        self._status_text.setStyleSheet(
-            "font-size: 16px; font-weight: 700; color: #c9d1d9; background: transparent;"
-        )
-        status_title_row.addWidget(self._status_dot)
-        status_title_row.addSpacing(8)
-        status_title_row.addWidget(self._status_text)
-        status_title_row.addStretch()
-        sc_layout.addLayout(status_title_row)
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        self._status_dot = StatusDot(10)
+        self._hero_status = QLabel("НЕ ПОДКЛЮЧЕНО")
+        self._hero_status.setObjectName("hero_status")
+        self._hero_status.setStyleSheet(f"color: {COLORS['TEXT']};")
+        status_row.addStretch()
+        status_row.addWidget(self._status_dot)
+        status_row.addWidget(self._hero_status)
+        status_row.addStretch()
+        hero_layout.addLayout(status_row)
+
+        self._hero_timer = QLabel("00:00:00")
+        self._hero_timer.setObjectName("hero_timer")
+        self._hero_timer.setAlignment(Qt.AlignCenter)
+        hero_layout.addWidget(self._hero_timer)
+
+        hero_layout.addSpacing(10)
+
+        btn_row = QHBoxLayout()
+        self._power_btn = PowerButton()
+        self._power_btn.clicked.connect(self._on_connect_clicked)
+        btn_row.addStretch()
+        btn_row.addWidget(self._power_btn)
+        btn_row.addStretch()
+        hero_layout.addLayout(btn_row)
+
+        hero_layout.addSpacing(10)
 
         session_row = QHBoxLayout()
         session_key = QLabel("Сессия:")
         session_key.setObjectName("key_label")
         self._session_val = QLabel("—")
         self._session_val.setObjectName("key_value")
+        session_row.addStretch()
         session_row.addWidget(session_key)
         session_row.addSpacing(4)
         session_row.addWidget(self._session_val)
         session_row.addStretch()
-        sc_layout.addLayout(session_row)
+        hero_layout.addLayout(session_row)
 
-        time_row = QHBoxLayout()
-        time_key = QLabel("Время:")
-        time_key.setObjectName("key_label")
-        self._elapsed_val = QLabel("00:00:00")
-        self._elapsed_val.setObjectName("mono")
-        time_row.addWidget(time_key)
-        time_row.addSpacing(4)
-        time_row.addWidget(self._elapsed_val)
-        time_row.addStretch()
-        sc_layout.addLayout(time_row)
+        layout.addWidget(hero_card)
 
-        layout.addWidget(status_card)
-
-        # Stats card
-        stats_card = QFrame()
-        stats_card.setObjectName("card")
-        stats_layout = QHBoxLayout(stats_card)
-        stats_layout.setContentsMargins(16, 12, 16, 12)
-        stats_layout.setSpacing(0)
-
-        # Out column
-        out_col = QVBoxLayout()
-        out_col.setSpacing(4)
-        out_title = _section_label("↑ ОТПРАВЛЕНО")
-        self._bytes_out_val = QLabel("0 B")
-        self._bytes_out_val.setStyleSheet(
-            "font-size: 22px; font-weight: 700; color: #3fb950; background: transparent;"
+        # ── Stat pills: outbound / inbound traffic ──
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(12)
+        out_pill, self._bytes_out_val, self._packets_out_val = self._build_stat_pill(
+            "stat_badge_out", "↑", "ОТПРАВЛЕНО"
         )
-        self._packets_out_val = QLabel("0 пакетов")
-        self._packets_out_val.setObjectName("key_label")
-        out_col.addWidget(out_title)
-        out_col.addWidget(self._bytes_out_val)
-        out_col.addWidget(self._packets_out_val)
-        stats_layout.addLayout(out_col, stretch=1)
-
-        # Vertical divider
-        vdiv = QFrame()
-        vdiv.setFrameShape(QFrame.VLine)
-        vdiv.setStyleSheet("color: #30363d; background: #30363d; max-width: 1px;")
-        stats_layout.addWidget(vdiv)
-        stats_layout.addSpacing(16)
-
-        # In column
-        in_col = QVBoxLayout()
-        in_col.setSpacing(4)
-        in_title = _section_label("↓ ПОЛУЧЕНО")
-        self._bytes_in_val = QLabel("0 B")
-        self._bytes_in_val.setStyleSheet(
-            "font-size: 22px; font-weight: 700; color: #388bfd; background: transparent;"
+        in_pill, self._bytes_in_val, self._packets_in_val = self._build_stat_pill(
+            "stat_badge_in", "↓", "ПОЛУЧЕНО"
         )
-        self._packets_in_val = QLabel("0 пакетов")
-        self._packets_in_val.setObjectName("key_label")
-        in_col.addWidget(in_title)
-        in_col.addWidget(self._bytes_in_val)
-        in_col.addWidget(self._packets_in_val)
-        stats_layout.addLayout(in_col, stretch=1)
-
-        layout.addWidget(stats_card)
+        stats_row.addWidget(out_pill, stretch=1)
+        stats_row.addWidget(in_pill, stretch=1)
+        layout.addLayout(stats_row)
 
         # Crypto info card
         crypto_card = QFrame()
@@ -509,10 +508,10 @@ class MainWindow(QMainWindow):
         pix.fill(Qt.transparent)
         p = QPainter(pix)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setBrush(QColor("#3fb950"))
+        p.setBrush(QColor(COLORS["ACCENT_1"]))
         p.setPen(Qt.NoPen)
         p.drawEllipse(1, 1, 14, 14)
-        p.setBrush(QColor("#0d1117"))
+        p.setBrush(QColor(COLORS["BG"]))
         p.drawEllipse(5, 5, 6, 6)
         p.end()
 
@@ -620,10 +619,6 @@ class MainWindow(QMainWindow):
         self._worker.frame_exchanged.connect(self.on_frame_exchanged)
         self._worker.finished.connect(self._on_worker_finished)
 
-        self._connect_btn.setText("ОТКЛЮЧИТЬ")
-        self._connect_btn.setObjectName("btn_disconnect")
-        self._connect_btn.setStyle(self._connect_btn.style())
-
         self._set_controls_enabled(False)
         self._log_message("INFO", f"Запуск подключения к {host}:{port}...")
         self._worker.start()
@@ -632,38 +627,39 @@ class MainWindow(QMainWindow):
     def on_status_changed(self, state: str, msg: str) -> None:
         self._status_dot.setState(state)
         self._header_dot.setState(state)
+        self._power_btn.setState(state)
 
         if state == "connected":
-            self._status_text.setText("ПОДКЛЮЧЕНО")
-            self._status_text.setStyleSheet(
-                "font-size: 16px; font-weight: 700; color: #3fb950; background: transparent;"
-            )
+            self._hero_status.setText("ПОДКЛЮЧЕНО")
+            self._hero_status.setStyleSheet(f"color: {COLORS['ACCENT_1']};")
             self._header_status_lbl.setText("Подключено")
-            self._header_status_lbl.setStyleSheet("color: #3fb950; font-size: 12px;")
+            self._header_status_lbl.setStyleSheet(
+                f"color: {COLORS['ACCENT_1']}; font-size: 12px;"
+            )
             self._elapsed = 0
             self._elapsed_timer.start()
         elif state == "connecting":
-            self._status_text.setText("ПОДКЛЮЧЕНИЕ...")
-            self._status_text.setStyleSheet(
-                "font-size: 16px; font-weight: 700; color: #e3b341; background: transparent;"
-            )
+            self._hero_status.setText("ПОДКЛЮЧЕНИЕ...")
+            self._hero_status.setStyleSheet(f"color: {COLORS['AMBER_1']};")
             self._header_status_lbl.setText("Подключение...")
-            self._header_status_lbl.setStyleSheet("color: #e3b341; font-size: 12px;")
-        elif state == "error":
-            self._status_text.setText("ОШИБКА")
-            self._status_text.setStyleSheet(
-                "font-size: 16px; font-weight: 700; color: #f85149; background: transparent;"
+            self._header_status_lbl.setStyleSheet(
+                f"color: {COLORS['AMBER_1']}; font-size: 12px;"
             )
+        elif state == "error":
+            self._hero_status.setText("ОШИБКА")
+            self._hero_status.setStyleSheet(f"color: {COLORS['ERROR_1']};")
             self._header_status_lbl.setText("Ошибка")
-            self._header_status_lbl.setStyleSheet("color: #f85149; font-size: 12px;")
+            self._header_status_lbl.setStyleSheet(
+                f"color: {COLORS['ERROR_1']}; font-size: 12px;"
+            )
             self._elapsed_timer.stop()
         else:  # disconnected
-            self._status_text.setText("НЕ ПОДКЛЮЧЕНО")
-            self._status_text.setStyleSheet(
-                "font-size: 16px; font-weight: 700; color: #c9d1d9; background: transparent;"
-            )
+            self._hero_status.setText("НЕ ПОДКЛЮЧЕНО")
+            self._hero_status.setStyleSheet(f"color: {COLORS['TEXT']};")
             self._header_status_lbl.setText("Не подключено")
-            self._header_status_lbl.setStyleSheet("color: #8b949e; font-size: 12px;")
+            self._header_status_lbl.setStyleSheet(
+                f"color: {COLORS['MUTED']}; font-size: 12px;"
+            )
             self._elapsed_timer.stop()
 
         self._log_message("INFO" if state != "error" else "ERROR", msg)
@@ -702,9 +698,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_worker_finished(self) -> None:
         self._worker = None
-        self._connect_btn.setText("ПОДКЛЮЧИТЬСЯ")
-        self._connect_btn.setObjectName("")
-        self._connect_btn.setStyle(self._connect_btn.style())
+        self._power_btn.setState("idle")
         self._set_controls_enabled(True)
         self._elapsed_timer.stop()
 
@@ -763,7 +757,7 @@ class MainWindow(QMainWindow):
         h = self._elapsed // 3600
         m = (self._elapsed % 3600) // 60
         s = self._elapsed % 60
-        self._elapsed_val.setText(f"{h:02d}:{m:02d}:{s:02d}")
+        self._hero_timer.setText(f"{h:02d}:{m:02d}:{s:02d}")
 
     @pyqtSlot()
     def _clear_log(self) -> None:
