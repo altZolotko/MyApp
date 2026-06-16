@@ -41,7 +41,7 @@
      └───────────────────────┬─────────────────────────────────┘
                              │ реализует
      ┌───────────────────────▼──────────────────────────────────┐
-     │ pygost_provider.py (pygost 5.0.0)                         │
+     │ pygost_provider.py (pygost 5.12, встроен в проект)         │
      │  • ГОСТ Р 34.12-2015 «Кузнечик» CTR (шифрование)         │
      │  • ГОСТ Р 34.11-2012 «Стрибог-256» (хэш)                 │
      │  • HMAC-Стрибог-256 (имитовставка)                        │
@@ -78,7 +78,8 @@
 ```
 vpn_gov_client/
 ├── config_bootstrap.json    # Начальная конфигурация (bootstrap)
-├── requirements.txt         # pygost==5.0.0
+├── requirements.txt         # PyQt5 (pygost не на PyPI — встроен ниже)
+├── pygost/                  # Встроенная копия pygost 5.12 (см. VENDORED.md)
 ├── main.py                  # Точка входа клиента (Linux + Windows)
 ├── server.py                # Сервер-заглушка для тестирования
 ├── demo_client.py           # Демо без TUN (docker-compose up)

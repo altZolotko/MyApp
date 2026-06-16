@@ -1,5 +1,5 @@
 """
-Реализация CryptoProvider на базе библиотеки pygost 5.0.0.
+Реализация CryptoProvider на базе библиотеки pygost (встроена в проект, см. pygost/VENDORED.md).
 
 Назначение: полная реализация криптографического интерфейса с использованием
 исключительно отечественных алгоритмов из pygost. Запрещено использование
@@ -38,7 +38,7 @@ from pygost.gost3410 import (
     pub_marshal,
     pub_unmarshal,
 )
-from pygost.gost3412 import GOST3412Kuznyechik
+from pygost.gost3412 import GOST3412Kuznechik
 from pygost.gost3413 import ctr as gost_ctr
 from pygost.gost34112012 import GOST34112012
 
@@ -147,7 +147,7 @@ def _constant_time_compare(a: bytes, b: bytes) -> bool:
 
 class PygostProvider(CryptoProvider):
     """
-    Криптографический провайдер на основе pygost 5.0.0.
+    Криптографический провайдер на основе pygost.
 
     Реализует все методы CryptoProvider с использованием исключительно
     отечественных алгоритмов ГОСТ. Зарубежные криптопровайдеры не используются.
@@ -265,7 +265,7 @@ class PygostProvider(CryptoProvider):
 
         key_buf = bytearray(key)
         try:
-            cipher = GOST3412Kuznyechik(bytes(key_buf))
+            cipher = GOST3412Kuznechik(bytes(key_buf))
             return gost_ctr(cipher.encrypt, _BLOCK_SIZE, plaintext, iv)
         finally:
             zeroize_bytes(key_buf)

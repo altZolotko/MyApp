@@ -40,7 +40,7 @@ echo [1/4] Python nayden: %PY%
 echo.
 
 REM --- Shag 2: ustanovka zavisimostey ---
-echo [2/4] Ustanovka zavisimostey (pygost, PyQt5)...
+echo [2/4] Ustanovka zavisimostey (PyQt5; pygost uzhe vstroen v proekt)...
 %PY% -m pip install --upgrade pip --quiet --disable-pip-version-check
 %PY% -m pip install --quiet --disable-pip-version-check -r requirements.txt
 if %errorlevel% neq 0 (
