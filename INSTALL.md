@@ -148,6 +148,7 @@ python vpn_gui.py
 
 | Проблема | Решение |
 |----------|---------|
+| `run.bat` пишет «Python не найден» хотя Python установлен, или открывается окно Microsoft Store | Это «заглушка» Windows (App Execution Alias) вместо настоящего Python — `where` её находит, но она не работает. Установите Python с python.org (галочка «Add Python to PATH»), затем отключите псевдонимы: **Параметры → Приложения → Псевдонимы выполнения приложений** → выключите `python.exe` и `python3.exe`. |
 | `python: command not found` / «не является внутренней командой» | Python не установлен или не добавлен в PATH. Переустановите с галочкой «Add Python to PATH». На Linux/macOS используйте `python3`. |
 | `No module named pygost` или `PyQt5` | Не установлены библиотеки. Выполните `python -m pip install -r requirements.txt`. |
 | `Сертификаты не найдены` | Запустите `python -m utils.cert_gen` или нажмите кнопку «Создать тестовые сертификаты» в интерфейсе. |

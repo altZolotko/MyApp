@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul
 title VPN-klient SKZI (GOST) - zapusk
 cd /d "%~dp0"
@@ -8,21 +9,33 @@ echo   VPN-klient SKZI (GOST) - avtomaticheskiy zapusk
 echo ============================================================
 echo.
 
-REM --- Shag 1: poisk Python ---
+REM --- Shag 1: poisk rabotayushchego Python ---
+REM Vazhno: na Windows komandy "python"/"py" mogut byt "zaglushkami"
+REM (App Execution Alias), kotorye nichego ne ustanavlivayut, a prosto
+REM otkryvayut Microsoft Store. "where" ih vse ravno nahodit, poetomu
+REM dopolnitelno proveryaem, chto --version vozvrashchaet nastoyashchiy
+REM nomer versii, a pip rabotaet.
 set "PY="
-where py >nul 2>nul && set "PY=py"
-if not defined PY ( where python >nul 2>nul && set "PY=python" )
+call :TryPython py
+if not defined PY call :TryPython python
+if not defined PY call :TryPython python3
+
 if not defined PY (
-    echo [OSHIBKA] Python ne nayden.
+    echo [OSHIBKA] Rabotayushchiy Python ne nayden.
     echo.
-    echo Ustanovite Python 3.10 ili novee s sayta:
+    echo Vozmozhno, eto "zaglushka" Microsoft Store vmesto nastoyashchego
+    echo Python. Ustanovite Python 3.10 ili novee s sayta:
     echo     https://www.python.org/downloads/
     echo VAZHNO: pri ustanovke postavte galochku "Add Python to PATH".
+    echo.
+    echo Esli Python uzhe ustanovlen, no oshibka povtoryaetsya - otklyuchite
+    echo zaglushki: Parametry - Prilozheniya - Psevdonimy vypolneniya
+    echo prilozheniy - vyklyuchite "python.exe" i "python3.exe".
     echo.
     pause
     exit /b 1
 )
-echo [1/4] Python nayden:
+echo [1/4] Python nayden: %PY%
 %PY% --version
 echo.
 
@@ -63,3 +76,30 @@ echo.
 echo.
 echo Rabota zavershena. Mozhno zakryt okno servera.
 pause
+exit /b 0
+
+REM ============================================================
+REM Proverka odnogo kandidata na rol' "nastoyashchego" Python:
+REM   1) komanda dolzhna nayitis' v PATH (where)
+REM   2) "--version" dolzhen vyvodit' stroku vida "Python 3.x.y"
+REM      (zaglushka Windows Store vyvodit sovsem drugoy tekst)
+REM   3) "-m pip --version" dolzhen rabotat'
+REM Pri uspehe ustanavlivaet PY=<kandidat>.
+REM ============================================================
+:TryPython
+set "CANDIDATE=%~1"
+where %CANDIDATE% >nul 2>nul
+if errorlevel 1 goto :eof
+
+set "VEROUT="
+for /f "delims=" %%v in ('%CANDIDATE% --version 2^>^&1') do (
+    if not defined VEROUT set "VEROUT=%%v"
+)
+echo !VEROUT! | findstr /r /c:"^Python [0-9]" >nul 2>nul
+if errorlevel 1 goto :eof
+
+%CANDIDATE% -m pip --version >nul 2>nul
+if errorlevel 1 goto :eof
+
+set "PY=%CANDIDATE%"
+goto :eof
