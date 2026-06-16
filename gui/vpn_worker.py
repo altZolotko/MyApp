@@ -53,7 +53,6 @@ class VpnWorker(QThread):
         self._port = port
         self._certs_dir = certs_dir
         self._stop_flag = threading.Event()
-        self._loop: asyncio.AbstractEventLoop | None = None
 
         # Stats
         self._bytes_out = 0
@@ -66,7 +65,6 @@ class VpnWorker(QThread):
         """Entry point for the QThread. Creates a fresh asyncio loop and runs it."""
         self._stop_flag.clear()
         loop = asyncio.new_event_loop()
-        self._loop = loop
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(self._async_main())
@@ -86,14 +84,10 @@ class VpnWorker(QThread):
             except Exception:
                 pass
             loop.close()
-            self._loop = None
 
     def stop(self) -> None:
         """Signal the worker to stop gracefully."""
         self._stop_flag.set()
-        loop = self._loop
-        if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(loop.stop)
 
     # ------------------------------------------------------------------ private
 
