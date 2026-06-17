@@ -62,6 +62,14 @@ def _prefix_to_mask(prefix: int) -> str:
     return ".".join(str((n >> (24 - i * 8)) & 0xFF) for i in range(4))
 
 
+def is_admin() -> bool:
+    """Проверяет права администратора/root для текущего процесса."""
+    if sys.platform == "win32":
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    return os.geteuid() == 0
+
+
 # ─── Абстрактный TUN-интерфейс ───────────────────────────────────────────────
 
 class TunInterface(ABC):
@@ -421,6 +429,12 @@ class VpnTunnel:
         self._running = False
         self._tasks: list = []
 
+        # Статистика трафика (для отображения в GUI)
+        self.bytes_out = 0
+        self.bytes_in = 0
+        self.packets_out = 0
+        self.packets_in = 0
+
     async def run(self) -> None:
         """Запускает все задачи туннеля и ожидает их завершения."""
         self._running = True
@@ -452,6 +466,10 @@ class VpnTunnel:
             if not task.done():
                 task.cancel()
 
+    def stop(self) -> None:
+        """Останавливает все задачи туннеля (вызывается извне, например GUI)."""
+        self._stop()
+
     # ── TUN → Server ──────────────────────────────────────────────────────────
 
     async def _tun_to_server(self) -> None:
@@ -476,6 +494,8 @@ class VpnTunnel:
                 self._writer.write(struct.pack("!H", len(frame)) + frame)
                 await self._writer.drain()
                 self._session.account_bytes(len(packet))
+                self.bytes_out += len(packet)
+                self.packets_out += 1
 
             except asyncio.TimeoutError:
                 continue
@@ -527,6 +547,8 @@ class VpnTunnel:
                     continue
 
                 self._tun.write(vpn_frame.payload)
+                self.bytes_in += len(vpn_frame.payload)
+                self.packets_in += 1
 
             except asyncio.TimeoutError:
                 continue

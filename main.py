@@ -35,7 +35,7 @@ from vpn_core.config_manager import ConfigManager
 from vpn_core.protocol import FrameCodec
 from vpn_core.pygost_provider import PygostProvider
 from vpn_core.session import Session, SessionConfig
-from vpn_core.tunnel import create_tun_interface, VpnTunnel, connect_with_retry
+from vpn_core.tunnel import create_tun_interface, VpnTunnel, connect_with_retry, is_admin
 from utils.logger import get_logger, setup_logger
 from utils.zeroize import secure_context
 
@@ -48,22 +48,20 @@ def check_admin() -> None:
     Linux: os.geteuid() == 0
     Windows: IsUserAnAdmin() через ctypes
     """
+    if is_admin():
+        return
     if sys.platform == "win32":
-        import ctypes
-        if not ctypes.windll.shell32.IsUserAnAdmin():
-            print(
-                "ОШИБКА: VPN-клиент должен быть запущен от имени Администратора "
-                "(требуется для управления WinTun-адаптером).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        print(
+            "ОШИБКА: VPN-клиент должен быть запущен от имени Администратора "
+            "(требуется для управления WinTun-адаптером).",
+            file=sys.stderr,
+        )
     else:
-        if os.geteuid() != 0:
-            print(
-                "ОШИБКА: VPN-клиент должен быть запущен от имени root (CAP_NET_ADMIN).",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        print(
+            "ОШИБКА: VPN-клиент должен быть запущен от имени root (CAP_NET_ADMIN).",
+            file=sys.stderr,
+        )
+    sys.exit(1)
 
 
 def load_cert_and_key(cert_path: str, key_path: str) -> tuple[bytes, bytes]:

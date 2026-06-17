@@ -49,7 +49,9 @@ from PyQt5.QtWidgets import (
 
 from gui.power_button import PowerButton
 from gui.styles import COLORS
+from gui.tunnel_worker import TunnelWorker
 from gui.vpn_worker import VpnWorker
+from vpn_core.tunnel import is_admin
 
 
 # ---------------------------------------------------------------------------
@@ -330,15 +332,19 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._radio_demo)
         layout.addWidget(self._radio_full)
 
-        self._full_tunnel_info = QLabel(
-            "Запустите от имени root/Administrator:\n"
-            "sudo python main.py config_bootstrap.json"
-        )
+        if is_admin():
+            _ft_text = "✓ Права root подтверждены. Полный туннель доступен."
+            _ft_style = f"color: {COLORS['ACCENT_1']}; font-size: 11px; background: transparent;"
+        else:
+            _ft_text = (
+                "Требуются права root/Administrator.\n"
+                "Запустите: sudo python vpn_gui.py"
+            )
+            _ft_style = f"color: {COLORS['AMBER_1']}; font-size: 11px; background: transparent;"
+        self._full_tunnel_info = QLabel(_ft_text)
         self._full_tunnel_info.setObjectName("key_label")
         self._full_tunnel_info.setWordWrap(True)
-        self._full_tunnel_info.setStyleSheet(
-            f"color: {COLORS['AMBER_1']}; font-size: 11px; background: transparent;"
-        )
+        self._full_tunnel_info.setStyleSheet(_ft_style)
         self._full_tunnel_info.setVisible(False)
         layout.addWidget(self._full_tunnel_info)
 
@@ -590,26 +596,46 @@ class MainWindow(QMainWindow):
             self._stop_worker()
             return
 
-        if self._radio_full.isChecked():
-            QMessageBox.warning(
-                self,
-                "Требуются права root",
-                "Полный туннельный режим требует прав суперпользователя.\n\n"
-                "Запустите от имени root/Administrator:\n"
-                "    sudo python main.py config_bootstrap.json",
-            )
-            return
-
         host = self._host_edit.text().strip() or "127.0.0.1"
         port = self._port_spin.value()
         certs_dir = self._certs_edit.text().strip() or "certs"
 
-        # Resolve relative path
         if not os.path.isabs(certs_dir):
             certs_dir = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "..", certs_dir
             )
         certs_dir = os.path.normpath(certs_dir)
+
+        if self._radio_full.isChecked():
+            if not is_admin():
+                QMessageBox.warning(
+                    self,
+                    "Требуются права root",
+                    "Полный туннельный режим требует прав суперпользователя.\n\n"
+                    "Запустите от имени root/Administrator:\n"
+                    "    sudo python vpn_gui.py",
+                )
+                return
+
+            config_path = os.path.normpath(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "..",
+                    "config_bootstrap.json",
+                )
+            )
+
+            self._worker = TunnelWorker(host, port, certs_dir, config_path)
+            self._worker.status_changed.connect(self.on_status_changed)
+            self._worker.log_line.connect(self.on_log_line)
+            self._worker.stats_updated.connect(self.on_stats_updated)
+            self._worker.session_ready.connect(self.on_session_ready)
+            self._worker.finished.connect(self._on_worker_finished)
+
+            self._set_controls_enabled(False)
+            self._log_message("INFO", f"Запуск полного туннеля к {host}:{port}...")
+            self._worker.start()
+            return
 
         self._worker = VpnWorker(host, port, certs_dir)
         self._worker.status_changed.connect(self.on_status_changed)
