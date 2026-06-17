@@ -8,8 +8,6 @@ Includes:
 """
 
 import os
-import subprocess
-import sys
 from datetime import datetime
 
 from PyQt5.QtCore import (
@@ -748,28 +746,17 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _generate_certs(self) -> None:
-        self._log_message("INFO", "Генерация тестовых сертификатов...")
-        certs_dir = self._certs_edit.text().strip() or "certs"
+        from utils.cert_gen import generate_test_infrastructure
+        certs_dir = self._certs_edit.text().strip() or str(get_default_certs_dir())
+        self._log_message("INFO", f"Генерация тестовых сертификатов в {certs_dir} ...")
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "utils.cert_gen"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            generate_test_infrastructure(certs_dir)
+            self._log_message(
+                "SUCCESS",
+                f"Сертификаты созданы в '{certs_dir}'",
             )
-            if result.returncode == 0:
-                self._log_message(
-                    "SUCCESS",
-                    f"Сертификаты успешно созданы в директории '{certs_dir}'",
-                )
-            else:
-                stderr = result.stderr.strip()
-                self._log_message("ERROR", f"Ошибка генерации: {stderr or 'неизвестная ошибка'}")
-        except subprocess.TimeoutExpired:
-            self._log_message("ERROR", "Таймаут генерации сертификатов")
         except Exception as exc:
-            self._log_message("ERROR", f"Ошибка запуска cert_gen: {exc}")
+            self._log_message("ERROR", f"Ошибка генерации сертификатов: {exc}")
 
     @pyqtSlot()
     def _on_elapsed_tick(self) -> None:
