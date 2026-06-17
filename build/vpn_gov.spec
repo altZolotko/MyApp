@@ -17,12 +17,17 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 block_cipher = None
 
+# wintun.dll кладётся build.ps1 в vendor\ (или вручную). Бандлим в корень
+# приложения, чтобы TUN-адаптер работал без отдельной установки драйвера.
+_wintun = os.path.join(ROOT, "vendor", "wintun.dll")
+_binaries = []
+if os.path.exists(_wintun):
+    _binaries.append((_wintun, "."))
+
 a = Analysis(
     [os.path.join(ROOT, "vpn_gui.py")],
     pathex=[ROOT],
-    binaries=[
-        # wintun.dll добавьте вручную если есть: ('path/to/wintun.dll', '.')
-    ],
+    binaries=_binaries,
     datas=[
         (os.path.join(ROOT, "config_bootstrap.json"), "."),
         (os.path.join(ROOT, "pygost"),                "pygost"),

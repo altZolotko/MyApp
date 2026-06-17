@@ -55,11 +55,10 @@ Name: "desktopicon";   Description: "{cm:CreateDesktopIcon}";   GroupDescription
 Name: "startupicon";   Description: "Запускать при старте Windows"; GroupDescription: "Автозапуск:"; Flags: unchecked
 
 [Files]
-; Основные файлы приложения из PyInstaller bundle
+; Основные файлы приложения из PyInstaller bundle.
+; wintun.dll уже встроена PyInstaller-ом (см. build/vpn_gov.spec), поэтому
+; попадает сюда автоматически вместе с остальными файлами dist\VPNGov\.
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
-; Драйвер WinTun (если есть рядом со скриптом сборки)
-; Source: "..\vendor\wintun.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: IsWin64
 
 [Icons]
 Name: "{group}\{#AppName}";                Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"

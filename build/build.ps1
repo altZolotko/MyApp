@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     Полный pipeline:
+      0. Загрузка wintun.dll (автоматически, если нет в vendor\)
       1. Генерация иконки (Pillow)
       2. Генерация version_info.txt
-      3. PyInstaller → dist\VPNGov\
+      3. PyInstaller → dist\VPNGov\  (wintun.dll внутри)
       4. Inno Setup → dist\VPNGov_Setup_1.0.0.exe   (если iscc доступен)
       5. MSIX → dist\VPNGov_1.0.0.msix               (если makeappx доступен)
 
@@ -57,9 +58,44 @@ $MsixDir   = Join-Path $DistDir "VPNGov_msix"
 $MsixOut   = Join-Path $DistDir "VPNGov_1.0.0.msix"
 $AppVer    = "1.0.0"
 
+$WintunVer    = "0.14.1"
+$WintunDll    = Join-Path $Root "vendor\wintun.dll"
+$WintunZipUrl = "https://www.wintun.net/builds/wintun-$WintunVer.zip"
+
 Push-Location $Root
 
 try {
+
+# ── 0. WinTun ─────────────────────────────────────────────────────────────────
+Write-Step "Шаг 0/5: Проверка wintun.dll"
+if (Test-Path $WintunDll) {
+    Write-OK "vendor\wintun.dll уже есть — загрузка не нужна"
+} else {
+    Write-Host "    Загрузка wintun-$WintunVer.zip ..." -ForegroundColor Cyan
+    $VendorDir  = Join-Path $Root "vendor"
+    $ZipTmp     = Join-Path $env:TEMP "wintun_$WintunVer.zip"
+    $ExtractTmp = Join-Path $env:TEMP "wintun_extracted_$WintunVer"
+
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $WintunZipUrl -OutFile $ZipTmp -UseBasicParsing
+    } catch {
+        Write-Fail "Не удалось загрузить wintun.dll: $_`nПоложите amd64\wintun.dll вручную в папку vendor\"
+    }
+
+    if (Test-Path $ExtractTmp) { Remove-Item $ExtractTmp -Recurse -Force }
+    Expand-Archive -Path $ZipTmp -DestinationPath $ExtractTmp -Force
+    New-Item -ItemType Directory -Path $VendorDir -Force | Out-Null
+
+    # Путь внутри архива: wintun\bin\amd64\wintun.dll
+    $DllSrc = Join-Path $ExtractTmp "wintun\bin\amd64\wintun.dll"
+    if (-not (Test-Path $DllSrc)) { Write-Fail "wintun.dll не найден внутри архива по пути $DllSrc" }
+    Copy-Item $DllSrc $WintunDll -Force
+
+    Remove-Item $ZipTmp    -Force -ErrorAction SilentlyContinue
+    Remove-Item $ExtractTmp -Recurse -Force -ErrorAction SilentlyContinue
+    Write-OK "vendor\wintun.dll загружен (v$WintunVer)"
+}
 
 # ── 1. Иконка ─────────────────────────────────────────────────────────────────
 Write-Step "Шаг 1/5: Генерация иконки"
