@@ -1,16 +1,17 @@
 """
-MainWindow — Complete PyQt5 GUI for the GOST-cryptography VPN client.
+MainWindow — PyQt5 GUI for the GOST-cryptography VPN client.
+Visual style: WabilVPN-inspired dark green + mint teal theme.
 
 Includes:
-  - StatusDot: animated pulsing indicator widget
-  - MainWindow: full application window with header, left config panel,
-    right status/stats/crypto cards, bottom log, system tray
+  - StatusDot: animated pulsing indicator
+  - MainWindow: full application window
 """
 
 import os
 from datetime import datetime
 
 from PyQt5.QtCore import (
+    QPointF,
     QSize,
     Qt,
     QTimer,
@@ -19,8 +20,10 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QColor,
     QIcon,
+    QLinearGradient,
     QPainter,
     QPainterPath,
+    QPen,
     QPixmap,
 )
 from PyQt5.QtWidgets import (
@@ -58,17 +61,6 @@ from utils.app_paths import get_default_certs_dir, get_default_config_path
 # ---------------------------------------------------------------------------
 
 class StatusDot(QWidget):
-    """
-    A small filled-circle indicator that pulses when active.
-
-    States
-    ------
-    idle        grey         — static
-    connecting  amber        — fast pulse
-    connected   brand accent — slow pulse
-    error       red          — static
-    """
-
     _COLORS = {
         "idle":       QColor(COLORS["MUTED_DIM"]),
         "connecting": QColor(COLORS["AMBER_2"]),
@@ -81,7 +73,7 @@ class StatusDot(QWidget):
         self._diameter = diameter
         self._state = "idle"
         self._opacity = 1.0
-        self._pulse_direction = -1  # -1 fade out, +1 fade in
+        self._pulse_direction = -1
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
         self.setFixedSize(diameter, diameter)
@@ -91,9 +83,9 @@ class StatusDot(QWidget):
         self._opacity = 1.0
         self._timer.stop()
         if state == "connected":
-            self._timer.start(40)   # ~25 fps, slow 2-second pulse
+            self._timer.start(40)
         elif state == "connecting":
-            self._timer.start(20)   # ~50 fps, faster pulse
+            self._timer.start(20)
         else:
             self.update()
 
@@ -116,8 +108,7 @@ class StatusDot(QWidget):
         painter.setBrush(color)
         painter.setPen(Qt.NoPen)
         d = self._diameter
-        margin = 1
-        painter.drawEllipse(margin, margin, d - 2 * margin, d - 2 * margin)
+        painter.drawEllipse(1, 1, d - 2, d - 2)
         painter.end()
 
     def sizeHint(self) -> QSize:
@@ -125,7 +116,56 @@ class StatusDot(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# Helper: section label
+# Shield icon painter (used for window + tray icons)
+# ---------------------------------------------------------------------------
+
+def _make_shield_icon(size: int) -> QPixmap:
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.Antialiasing)
+
+    s = size
+    m = s * 0.10   # margin
+
+    # Shield path: rounded top, tapered sides, pointed bottom
+    path = QPainterPath()
+    path.moveTo(s / 2, s - m)          # bottom point
+    path.lineTo(m, s * 0.52)           # left mid
+    path.lineTo(m, m + s * 0.12)       # left top
+    path.quadTo(m, m, m + s * 0.12, m)  # top-left curve
+    path.lineTo(s - m - s * 0.12, m)
+    path.quadTo(s - m, m, s - m, m + s * 0.12)  # top-right curve
+    path.lineTo(s - m, s * 0.52)       # right mid
+    path.closeSubpath()
+
+    # Dark-to-teal gradient (top-left bright, bottom-right dark)
+    grad = QLinearGradient(QPointF(m, m), QPointF(s - m, s - m))
+    grad.setColorAt(0.0, QColor("#55C69B"))
+    grad.setColorAt(0.55, QColor("#2E8A62"))
+    grad.setColorAt(1.0, QColor("#1A5240"))
+    p.setBrush(grad)
+    p.setPen(Qt.NoPen)
+    p.drawPath(path)
+
+    # Highlight glint on the right edge
+    glint = QPainterPath()
+    glint.moveTo(s - m, m + s * 0.12)
+    glint.lineTo(s - m, s * 0.42)
+    glint.lineTo(s * 0.68, s * 0.72)
+    glint.lineTo(s * 0.68, s * 0.28)
+    glint.closeSubpath()
+    highlight = QColor("#FFFFFF")
+    highlight.setAlphaF(0.12)
+    p.setBrush(highlight)
+    p.drawPath(glint)
+
+    p.end()
+    return pix
+
+
+# ---------------------------------------------------------------------------
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _section_label(text: str) -> QLabel:
@@ -157,9 +197,6 @@ def _format_bytes(n: int) -> str:
 # ---------------------------------------------------------------------------
 
 class MainWindow(QMainWindow):
-    """
-    Primary application window for the GOST-VPN client GUI.
-    """
 
     def __init__(self, parent: QWidget = None, config_path: str = None):
         super().__init__(parent)
@@ -169,7 +206,7 @@ class MainWindow(QMainWindow):
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(1000)
         self._elapsed_timer.timeout.connect(self._on_elapsed_tick)
-        self._tray_warned = False  # first close: ask user
+        self._tray_warned = False
 
         self._setup_window()
         self._build_ui()
@@ -179,20 +216,9 @@ class MainWindow(QMainWindow):
 
     def _setup_window(self) -> None:
         self.setWindowTitle("VPN-клиент СКЗИ")
-        self.setMinimumSize(980, 900)
-        self.resize(1100, 960)
-        # Window icon (generated programmatically)
-        icon_pix = QPixmap(32, 32)
-        icon_pix.fill(Qt.transparent)
-        p = QPainter(icon_pix)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setBrush(QColor(COLORS["ACCENT_1"]))
-        p.setPen(Qt.NoPen)
-        p.drawEllipse(4, 4, 24, 24)
-        p.setBrush(QColor(COLORS["BG"]))
-        p.drawEllipse(10, 10, 12, 12)
-        p.end()
-        self.setWindowIcon(QIcon(icon_pix))
+        self.setMinimumSize(980, 860)
+        self.resize(1100, 940)
+        self.setWindowIcon(QIcon(_make_shield_icon(32)))
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -201,83 +227,66 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # ── Header ──────────────────────────────────────────────────
-        header = QFrame()
-        header.setObjectName("header")
-        header.setFixedHeight(56)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
-        header_layout.setSpacing(8)
+        root_layout.addWidget(self._build_header())
 
-        shield_lbl = QLabel("🛡")
-        shield_lbl.setStyleSheet("font-size: 22px; background: transparent;")
-        title_lbl = QLabel("VPN-клиент СКЗИ")
-        title_lbl.setObjectName("title")
-        sub_lbl = QLabel("ГОСТ · v1.0")
-        sub_lbl.setObjectName("subtitle")
-
-        header_layout.addWidget(shield_lbl)
-        header_layout.addWidget(title_lbl)
-        header_layout.addSpacing(6)
-        header_layout.addWidget(sub_lbl)
-        header_layout.addStretch()
-
-        self._header_dot = StatusDot(12, header)
-        self._header_status_lbl = QLabel("Не подключено")
-        self._header_status_lbl.setObjectName("subtitle")
-
-        header_layout.addWidget(self._header_dot)
-        header_layout.addWidget(self._header_status_lbl)
-
-        root_layout.addWidget(header)
-
-        # ── Body area ───────────────────────────────────────────────
         body_widget = QWidget()
         body_layout = QHBoxLayout(body_widget)
         body_layout.setContentsMargins(16, 16, 16, 0)
         body_layout.setSpacing(16)
         root_layout.addWidget(body_widget, stretch=1)
 
-        # Left panel
         body_layout.addWidget(self._build_left_panel())
-
-        # Right panel
         body_layout.addLayout(self._build_right_panel(), stretch=1)
 
-        # ── Log panel ───────────────────────────────────────────────
-        log_container = QWidget()
-        log_container_layout = QVBoxLayout(log_container)
-        log_container_layout.setContentsMargins(16, 8, 16, 12)
-        log_container_layout.setSpacing(4)
+        root_layout.addWidget(self._build_log_panel())
 
-        log_header = QHBoxLayout()
-        log_title = _section_label("ЖУРНАЛ СОБЫТИЙ")
-        log_header.addWidget(log_title)
-        log_header.addStretch()
-        clear_btn = QPushButton("Очистить")
-        clear_btn.setObjectName("btn_secondary")
-        clear_btn.setFixedWidth(80)
-        clear_btn.clicked.connect(self._clear_log)
-        log_header.addWidget(clear_btn)
-        log_container_layout.addLayout(log_header)
+    # ------------------------------------------------------------------ header
 
-        self._log_edit = QTextEdit()
-        self._log_edit.setObjectName("log")
-        self._log_edit.setReadOnly(True)
-        self._log_edit.setMinimumHeight(150)
-        self._log_edit.setMaximumHeight(190)
-        log_container_layout.addWidget(self._log_edit)
+    def _build_header(self) -> QFrame:
+        header = QFrame()
+        header.setObjectName("header")
+        header.setFixedHeight(58)
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(18, 0, 18, 0)
+        layout.setSpacing(10)
 
-        root_layout.addWidget(log_container)
+        # Shield logo
+        logo_lbl = QLabel()
+        logo_pix = _make_shield_icon(28)
+        logo_lbl.setPixmap(logo_pix)
+        logo_lbl.setFixedSize(28, 28)
+        logo_lbl.setStyleSheet("background: transparent;")
 
-    # ── Left panel ──────────────────────────────────────────────────
+        title_lbl = QLabel("VPN-клиент СКЗИ")
+        title_lbl.setObjectName("title")
+
+        sub_lbl = QLabel("ГОСТ · v1.0")
+        sub_lbl.setObjectName("subtitle")
+        sub_lbl.setStyleSheet(f"color: {COLORS['MUTED']}; font-size: 11px; background: transparent;")
+
+        layout.addWidget(logo_lbl)
+        layout.addWidget(title_lbl)
+        layout.addSpacing(4)
+        layout.addWidget(sub_lbl)
+        layout.addStretch()
+
+        self._header_dot = StatusDot(10, header)
+        self._header_status_lbl = QLabel("Не подключено")
+        self._header_status_lbl.setObjectName("subtitle")
+
+        layout.addWidget(self._header_dot)
+        layout.addWidget(self._header_status_lbl)
+
+        return header
+
+    # ------------------------------------------------------------------ left panel
 
     def _build_left_panel(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("card")
         panel.setFixedWidth(256)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
 
         # ── Server ──
@@ -328,18 +337,15 @@ class MainWindow(QMainWindow):
         layout.addWidget(_section_label("РЕЖИМ"))
         self._radio_demo = QRadioButton("Демо (без TUN)")
         self._radio_demo.setChecked(True)
-        self._radio_full = QRadioButton("Полный туннель (sudo/Admin)")
+        self._radio_full = QRadioButton("Полный туннель (Admin)")
         layout.addWidget(self._radio_demo)
         layout.addWidget(self._radio_full)
 
         if is_admin():
-            _ft_text = "✓ Права root подтверждены. Полный туннель доступен."
+            _ft_text = "✓ Права подтверждены. Туннель доступен."
             _ft_style = f"color: {COLORS['ACCENT_1']}; font-size: 11px; background: transparent;"
         else:
-            _ft_text = (
-                "Требуются права root/Administrator.\n"
-                "Запустите: sudo python vpn_gui.py"
-            )
+            _ft_text = "Требуются права Администратора."
             _ft_style = f"color: {COLORS['AMBER_1']}; font-size: 11px; background: transparent;"
         self._full_tunnel_info = QLabel(_ft_text)
         self._full_tunnel_info.setObjectName("key_label")
@@ -356,7 +362,7 @@ class MainWindow(QMainWindow):
 
         return panel
 
-    # ── Right panel ─────────────────────────────────────────────────
+    # ------------------------------------------------------------------ right panel
 
     def _build_stat_pill(self, badge_name: str, glyph: str, title_text: str):
         pill = QFrame()
@@ -392,13 +398,41 @@ class MainWindow(QMainWindow):
         layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # ── Hero card: status, big timer, power button, session id ──
-        hero_card = QFrame()
-        hero_card.setObjectName("card")
-        hero_layout = QVBoxLayout(hero_card)
-        hero_layout.setContentsMargins(24, 20, 24, 20)
-        hero_layout.setSpacing(4)
+        # ── Security status badge ────────────────────────────────────
+        badge_row = QHBoxLayout()
+        self._security_badge = QFrame()
+        self._security_badge.setObjectName("security_badge")
+        badge_inner = QHBoxLayout(self._security_badge)
+        badge_inner.setContentsMargins(16, 8, 16, 8)
+        badge_inner.setSpacing(8)
 
+        lock_lbl = QLabel("🔒")
+        lock_lbl.setStyleSheet("font-size: 13px; background: transparent;")
+        badge_key = QLabel("Статус защиты:")
+        badge_key.setObjectName("key_label")
+        self._badge_val = QLabel("НЕ ПОДКЛЮЧЕНО")
+        self._badge_val.setStyleSheet(
+            f"color: {COLORS['MUTED']}; font-weight: 700; font-size: 12px;"
+        )
+        badge_inner.addWidget(lock_lbl)
+        badge_inner.addWidget(badge_key)
+        badge_inner.addWidget(self._badge_val)
+
+        badge_row.addStretch()
+        badge_row.addWidget(self._security_badge)
+        badge_row.addStretch()
+        layout.addLayout(badge_row)
+
+        # ── Power button ─────────────────────────────────────────────
+        btn_row = QHBoxLayout()
+        self._power_btn = PowerButton()
+        self._power_btn.clicked.connect(self._on_connect_clicked)
+        btn_row.addStretch()
+        btn_row.addWidget(self._power_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        # ── Status + timer ───────────────────────────────────────────
         status_row = QHBoxLayout()
         status_row.setSpacing(8)
         self._status_dot = StatusDot(10)
@@ -409,40 +443,70 @@ class MainWindow(QMainWindow):
         status_row.addWidget(self._status_dot)
         status_row.addWidget(self._hero_status)
         status_row.addStretch()
-        hero_layout.addLayout(status_row)
+        layout.addLayout(status_row)
 
         self._hero_timer = QLabel("00:00:00")
         self._hero_timer.setObjectName("hero_timer")
         self._hero_timer.setAlignment(Qt.AlignCenter)
-        hero_layout.addWidget(self._hero_timer)
+        layout.addWidget(self._hero_timer)
 
-        hero_layout.addSpacing(10)
+        # ── IP info card ─────────────────────────────────────────────
+        ip_card = QFrame()
+        ip_card.setObjectName("ip_card")
+        ip_layout = QHBoxLayout(ip_card)
+        ip_layout.setContentsMargins(24, 12, 24, 12)
+        ip_layout.setSpacing(0)
 
-        btn_row = QHBoxLayout()
-        self._power_btn = PowerButton()
-        self._power_btn.clicked.connect(self._on_connect_clicked)
-        btn_row.addStretch()
-        btn_row.addWidget(self._power_btn)
-        btn_row.addStretch()
-        hero_layout.addLayout(btn_row)
+        own_col = QVBoxLayout()
+        own_col.setSpacing(3)
+        own_key = QLabel("Ваш IP")
+        own_key.setObjectName("key_label")
+        self._own_ip_val = QLabel("—")
+        self._own_ip_val.setObjectName("key_value")
+        own_col.addWidget(own_key)
+        own_col.addWidget(self._own_ip_val)
 
-        hero_layout.addSpacing(10)
+        ip_sep = QFrame()
+        ip_sep.setObjectName("divider")
+        ip_sep.setFrameShape(QFrame.VLine)
+        ip_sep.setFixedWidth(1)
 
-        session_row = QHBoxLayout()
-        session_key = QLabel("Сессия:")
+        vpn_col = QVBoxLayout()
+        vpn_col.setSpacing(3)
+        vpn_key = QLabel("VPN IP")
+        vpn_key.setObjectName("key_label")
+        self._vpn_ip_val = QLabel("—")
+        self._vpn_ip_val.setObjectName("key_value")
+        vpn_col.addWidget(vpn_key)
+        vpn_col.addWidget(self._vpn_ip_val)
+
+        ip_layout.addStretch()
+        ip_layout.addLayout(own_col)
+        ip_layout.addSpacing(36)
+        ip_layout.addWidget(ip_sep)
+        ip_layout.addSpacing(36)
+        ip_layout.addLayout(vpn_col)
+        ip_layout.addStretch()
+
+        # Session row inside ip_card
+        session_col = QVBoxLayout()
+        session_col.setSpacing(3)
+        session_key = QLabel("Сессия")
         session_key.setObjectName("key_label")
         self._session_val = QLabel("—")
         self._session_val.setObjectName("key_value")
-        session_row.addStretch()
-        session_row.addWidget(session_key)
-        session_row.addSpacing(4)
-        session_row.addWidget(self._session_val)
-        session_row.addStretch()
-        hero_layout.addLayout(session_row)
+        session_col.addWidget(session_key)
+        session_col.addWidget(self._session_val)
 
-        layout.addWidget(hero_card)
+        ip_layout.addSpacing(20)
+        ip_layout.addWidget(ip_sep)
+        ip_layout.addSpacing(20)
+        ip_layout.addLayout(session_col)
+        ip_layout.addStretch()
 
-        # ── Stat pills: outbound / inbound traffic ──
+        layout.addWidget(ip_card)
+
+        # ── Traffic stat pills ───────────────────────────────────────
         stats_row = QHBoxLayout()
         stats_row.setSpacing(12)
         out_pill, self._bytes_out_val, self._packets_out_val = self._build_stat_pill(
@@ -455,7 +519,7 @@ class MainWindow(QMainWindow):
         stats_row.addWidget(in_pill, stretch=1)
         layout.addLayout(stats_row)
 
-        # Crypto info card
+        # ── Crypto card ──────────────────────────────────────────────
         crypto_card = QFrame()
         crypto_card.setObjectName("card")
         crypto_layout = QVBoxLayout(crypto_card)
@@ -464,43 +528,55 @@ class MainWindow(QMainWindow):
 
         crypto_layout.addWidget(_section_label("КРИПТОГРАФИЧЕСКИЕ ПАРАМЕТРЫ"))
 
-        alg_row = QHBoxLayout()
-        alg_key = QLabel("Алгоритм:")
-        alg_key.setObjectName("key_label")
-        self._alg_val = QLabel("—")
-        self._alg_val.setObjectName("key_value")
-        alg_row.addWidget(alg_key)
-        alg_row.addSpacing(4)
-        alg_row.addWidget(self._alg_val)
-        alg_row.addStretch()
-        crypto_layout.addLayout(alg_row)
-
-        enc_row = QHBoxLayout()
-        enc_key_lbl = QLabel("Ключ шифр.:")
-        enc_key_lbl.setObjectName("key_label")
-        self._enc_key_val = QLabel("—")
-        self._enc_key_val.setObjectName("key_value")
-        enc_row.addWidget(enc_key_lbl)
-        enc_row.addSpacing(4)
-        enc_row.addWidget(self._enc_key_val)
-        enc_row.addStretch()
-        crypto_layout.addLayout(enc_row)
-
-        mac_row = QHBoxLayout()
-        mac_key_lbl = QLabel("Ключ имит.:")
-        mac_key_lbl.setObjectName("key_label")
-        self._mac_key_val = QLabel("—")
-        self._mac_key_val.setObjectName("key_value")
-        mac_row.addWidget(mac_key_lbl)
-        mac_row.addSpacing(4)
-        mac_row.addWidget(self._mac_key_val)
-        mac_row.addStretch()
-        crypto_layout.addLayout(mac_row)
+        for attr, lbl_text in [
+            ("_alg_val",     "Алгоритм:"),
+            ("_enc_key_val", "Ключ шифр.:"),
+            ("_mac_key_val", "Ключ имит.:"),
+        ]:
+            row = QHBoxLayout()
+            key = QLabel(lbl_text)
+            key.setObjectName("key_label")
+            val = QLabel("—")
+            val.setObjectName("key_value")
+            setattr(self, attr, val)
+            row.addWidget(key)
+            row.addSpacing(4)
+            row.addWidget(val)
+            row.addStretch()
+            crypto_layout.addLayout(row)
 
         layout.addWidget(crypto_card)
         layout.addStretch()
 
         return layout
+
+    # ------------------------------------------------------------------ log panel
+
+    def _build_log_panel(self) -> QWidget:
+        container = QWidget()
+        inner = QVBoxLayout(container)
+        inner.setContentsMargins(16, 8, 16, 12)
+        inner.setSpacing(4)
+
+        log_header = QHBoxLayout()
+        log_title = _section_label("ЖУРНАЛ СОБЫТИЙ")
+        log_header.addWidget(log_title)
+        log_header.addStretch()
+        clear_btn = QPushButton("Очистить")
+        clear_btn.setObjectName("btn_secondary")
+        clear_btn.setFixedWidth(80)
+        clear_btn.clicked.connect(self._clear_log)
+        log_header.addWidget(clear_btn)
+        inner.addLayout(log_header)
+
+        self._log_edit = QTextEdit()
+        self._log_edit.setObjectName("log")
+        self._log_edit.setReadOnly(True)
+        self._log_edit.setMinimumHeight(140)
+        self._log_edit.setMaximumHeight(180)
+        inner.addWidget(self._log_edit)
+
+        return container
 
     # ------------------------------------------------------------------ tray
 
@@ -509,34 +585,18 @@ class MainWindow(QMainWindow):
             self._tray = None
             return
 
-        # Generate tray icon
-        pix = QPixmap(16, 16)
-        pix.fill(Qt.transparent)
-        p = QPainter(pix)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setBrush(QColor(COLORS["ACCENT_1"]))
-        p.setPen(Qt.NoPen)
-        p.drawEllipse(1, 1, 14, 14)
-        p.setBrush(QColor(COLORS["BG"]))
-        p.drawEllipse(5, 5, 6, 6)
-        p.end()
-
-        self._tray = QSystemTrayIcon(QIcon(pix), self)
+        self._tray = QSystemTrayIcon(QIcon(_make_shield_icon(16)), self)
         self._tray.setToolTip("VPN-клиент СКЗИ")
 
         tray_menu = QMenu()
         show_action = QAction("Показать", self)
         show_action.triggered.connect(self._tray_show)
         tray_menu.addAction(show_action)
-
         tray_menu.addSeparator()
-
         disconnect_action = QAction("Отключить", self)
         disconnect_action.triggered.connect(self._tray_disconnect)
         tray_menu.addAction(disconnect_action)
-
         tray_menu.addSeparator()
-
         quit_action = QAction("Выход", self)
         quit_action.triggered.connect(self._quit_app)
         tray_menu.addAction(quit_action)
@@ -592,7 +652,6 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_connect_clicked(self) -> None:
         if self._worker is not None:
-            # Disconnect
             self._stop_worker()
             return
 
@@ -601,19 +660,17 @@ class MainWindow(QMainWindow):
         certs_dir = self._certs_edit.text().strip() or str(get_default_certs_dir())
 
         if not os.path.isabs(certs_dir):
-            certs_dir = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "..", certs_dir
+            certs_dir = os.path.normpath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", certs_dir)
             )
-        certs_dir = os.path.normpath(certs_dir)
 
         if self._radio_full.isChecked():
             if not is_admin():
                 QMessageBox.warning(
                     self,
-                    "Требуются права root",
-                    "Полный туннельный режим требует прав суперпользователя.\n\n"
-                    "Запустите от имени root/Administrator:\n"
-                    "    sudo python vpn_gui.py",
+                    "Требуются права Администратора",
+                    "Полный туннельный режим требует прав Администратора.\n\n"
+                    "Запустите приложение от имени Администратора.",
                 )
                 return
 
@@ -623,7 +680,6 @@ class MainWindow(QMainWindow):
             self._worker.stats_updated.connect(self.on_stats_updated)
             self._worker.session_ready.connect(self.on_session_ready)
             self._worker.finished.connect(self._on_worker_finished)
-
             self._set_controls_enabled(False)
             self._log_message("INFO", f"Запуск полного туннеля к {host}:{port}...")
             self._worker.start()
@@ -636,7 +692,6 @@ class MainWindow(QMainWindow):
         self._worker.session_ready.connect(self.on_session_ready)
         self._worker.frame_exchanged.connect(self.on_frame_exchanged)
         self._worker.finished.connect(self._on_worker_finished)
-
         self._set_controls_enabled(False)
         self._log_message("INFO", f"Запуск подключения к {host}:{port}...")
         self._worker.start()
@@ -648,12 +703,18 @@ class MainWindow(QMainWindow):
         self._power_btn.setState(state)
 
         if state == "connected":
+            host = self._host_edit.text().strip() or "127.0.0.1"
             self._hero_status.setText("ПОДКЛЮЧЕНО")
             self._hero_status.setStyleSheet(f"color: {COLORS['ACCENT_1']};")
             self._header_status_lbl.setText("Подключено")
             self._header_status_lbl.setStyleSheet(
                 f"color: {COLORS['ACCENT_1']}; font-size: 12px;"
             )
+            self._badge_val.setText("ЗАЩИЩЕНО")
+            self._badge_val.setStyleSheet(
+                f"color: {COLORS['ACCENT_1']}; font-weight: 700; font-size: 12px;"
+            )
+            self._vpn_ip_val.setText(host)
             self._elapsed = 0
             self._elapsed_timer.start()
         elif state == "connecting":
@@ -663,6 +724,10 @@ class MainWindow(QMainWindow):
             self._header_status_lbl.setStyleSheet(
                 f"color: {COLORS['AMBER_1']}; font-size: 12px;"
             )
+            self._badge_val.setText("ПОДКЛЮЧЕНИЕ...")
+            self._badge_val.setStyleSheet(
+                f"color: {COLORS['AMBER_1']}; font-weight: 700; font-size: 12px;"
+            )
         elif state == "error":
             self._hero_status.setText("ОШИБКА")
             self._hero_status.setStyleSheet(f"color: {COLORS['ERROR_1']};")
@@ -670,14 +735,24 @@ class MainWindow(QMainWindow):
             self._header_status_lbl.setStyleSheet(
                 f"color: {COLORS['ERROR_1']}; font-size: 12px;"
             )
+            self._badge_val.setText("ОШИБКА СОЕДИНЕНИЯ")
+            self._badge_val.setStyleSheet(
+                f"color: {COLORS['ERROR_1']}; font-weight: 700; font-size: 12px;"
+            )
+            self._vpn_ip_val.setText("—")
             self._elapsed_timer.stop()
-        else:  # disconnected
+        else:
             self._hero_status.setText("НЕ ПОДКЛЮЧЕНО")
             self._hero_status.setStyleSheet(f"color: {COLORS['TEXT']};")
             self._header_status_lbl.setText("Не подключено")
             self._header_status_lbl.setStyleSheet(
                 f"color: {COLORS['MUTED']}; font-size: 12px;"
             )
+            self._badge_val.setText("НЕ ПОДКЛЮЧЕНО")
+            self._badge_val.setStyleSheet(
+                f"color: {COLORS['MUTED']}; font-weight: 700; font-size: 12px;"
+            )
+            self._vpn_ip_val.setText("—")
             self._elapsed_timer.stop()
 
         self._log_message("INFO" if state != "error" else "ERROR", msg)
@@ -703,15 +778,9 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str, int, str)
     def on_frame_exchanged(self, direction: str, seq: int, text_preview: str) -> None:
         if direction == "OUT":
-            self._log_message(
-                "DEBUG",
-                f"--> [seq={seq}] Отправлен кадр: {text_preview[:60]}",
-            )
+            self._log_message("DEBUG", f"--> [seq={seq}] Отправлен кадр: {text_preview[:60]}")
         else:
-            self._log_message(
-                "DEBUG",
-                f"<-- [seq={seq}] Получен эхо: {text_preview[:60]}",
-            )
+            self._log_message("DEBUG", f"<-- [seq={seq}] Получен эхо: {text_preview[:60]}")
 
     @pyqtSlot()
     def _on_worker_finished(self) -> None:
@@ -751,10 +820,7 @@ class MainWindow(QMainWindow):
         self._log_message("INFO", f"Генерация тестовых сертификатов в {certs_dir} ...")
         try:
             generate_test_infrastructure(certs_dir)
-            self._log_message(
-                "SUCCESS",
-                f"Сертификаты созданы в '{certs_dir}'",
-            )
+            self._log_message("SUCCESS", f"Сертификаты созданы в '{certs_dir}'")
         except Exception as exc:
             self._log_message("ERROR", f"Ошибка генерации сертификатов: {exc}")
 
@@ -771,37 +837,34 @@ class MainWindow(QMainWindow):
         self._log_edit.clear()
 
     def _log_message(self, level: str, text: str) -> None:
-        """Append a colored HTML line with timestamp to the log."""
         color_map = {
-            "INFO":    "#c9d1d9",
-            "WARNING": "#e3b341",
-            "ERROR":   "#f85149",
-            "SUCCESS": "#3fb950",
-            "DEBUG":   "#8b949e",
+            "INFO":    "#E8E8E8",
+            "WARNING": "#FFC857",
+            "ERROR":   "#FF3232",
+            "SUCCESS": "#55C69B",
+            "DEBUG":   "#A6A6A5",
         }
         level_color_map = {
-            "INFO":    "#8b949e",
-            "WARNING": "#e3b341",
-            "ERROR":   "#f85149",
-            "SUCCESS": "#3fb950",
-            "DEBUG":   "#484f58",
+            "INFO":    "#A6A6A5",
+            "WARNING": "#FFC857",
+            "ERROR":   "#FF3232",
+            "SUCCESS": "#55C69B",
+            "DEBUG":   "#4A5A52",
         }
-        color = color_map.get(level, "#c9d1d9")
-        level_color = level_color_map.get(level, "#8b949e")
+        color = color_map.get(level, "#E8E8E8")
+        level_color = level_color_map.get(level, "#A6A6A5")
 
         now = datetime.now().strftime("%H:%M:%S")
-        # Escape HTML special chars
         safe_text = (
             text.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
         )
         html = (
-            f'<span style="color:#484f58;">[{now}]</span> '
+            f'<span style="color:#4A5A52;">[{now}]</span> '
             f'<span style="color:{level_color}; font-weight:600;">{level:7s}</span> '
             f'<span style="color:{color};">{safe_text}</span>'
         )
         self._log_edit.append(html)
-        # Auto-scroll
         sb = self._log_edit.verticalScrollBar()
         sb.setValue(sb.maximum())

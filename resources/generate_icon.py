@@ -1,21 +1,22 @@
 """
-Генератор иконки приложения VPN Gov.
+Генератор иконки приложения VPN-клиент СКЗИ.
 Создаёт resources/icon.ico с размерами 16, 32, 48, 64, 128, 256 пикселей.
+
+Стиль: тёмно-зелёный фон + градиент мятно-бирюзовый (#55C69B) щит.
 
 Запуск: python resources/generate_icon.py
 """
 
 import os
-import math
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 
-# Цвета темы "Pulse"
-BG_COLOR      = (13, 13, 15)        # #0d0d0f
-ACCENT_1      = (255, 107, 53)      # #FF6B35 (orange)
-ACCENT_2      = (232, 76, 76)       # #E84C4C (red)
-WHITE         = (255, 255, 255)
-WHITE_80      = (255, 255, 255, 204)
+BG_COLOR  = (12, 22, 16)         # #0C1610 dark green-black
+TEAL_1    = (85, 198, 155)       # #55C69B mint teal (top)
+TEAL_2    = (46, 138, 98)        # #2E8A62 mid teal
+TEAL_3    = (26, 82, 64)         # #1A5240 dark teal (bottom)
+WHITE     = (255, 255, 255, 230)
+HIGHLIGHT = (255, 255, 255, 30)  # right-edge glint
 
 
 def _lerp_color(c1, c2, t):
@@ -28,78 +29,81 @@ def draw_icon(size: int) -> Image.Image:
 
     s = size
     pad = s * 0.06
-    r = s * 0.18  # corner radius for background
+    corner_r = s * 0.20
 
-    # --- Background: rounded square with dark color ---
+    # Rounded square background
     draw.rounded_rectangle(
         [pad, pad, s - pad, s - pad],
-        radius=r,
+        radius=corner_r,
         fill=BG_COLOR + (255,),
     )
 
-    # --- Shield shape ---
-    # Shield: a polygon approximating a classic shield
-    cx = s / 2
-    top = s * 0.14
-    bottom = s * 0.86
-    hw = s * 0.34   # half-width at top
+    # Shield geometry
+    cx   = s / 2
+    top  = s * 0.12
+    mid  = s * 0.60   # where sides start converging
+    bot  = s * 0.88   # bottom point
+    hw   = s * 0.36   # half-width
 
-    # Draw gradient by stacking horizontal lines inside the shield bounding box
-    shield_pts = [
-        (cx - hw, top),
-        (cx + hw, top),
-        (cx + hw, s * 0.60),
-        (cx,      bottom),
-        (cx - hw, s * 0.60),
-    ]
-
-    # Draw filled shield with gradient (simulate by drawing slices)
-    shield_height = bottom - top
-    num_slices = int(shield_height) + 1
-    for i in range(num_slices):
+    # Fill shield with vertical gradient
+    total_h = bot - top
+    for i in range(int(total_h) + 1):
         y = top + i
-        t = i / shield_height
-        color = _lerp_color(ACCENT_1, ACCENT_2, t) + (255,)
-        # Compute x bounds at this y
-        if y <= s * 0.60:
+        t = i / total_h
+        if t < 0.5:
+            color = _lerp_color(TEAL_1, TEAL_2, t * 2) + (255,)
+        else:
+            color = _lerp_color(TEAL_2, TEAL_3, (t - 0.5) * 2) + (255,)
+
+        if y <= mid:
             x0 = cx - hw
             x1 = cx + hw
         else:
-            frac = (y - s * 0.60) / (bottom - s * 0.60)
+            frac = (y - mid) / (bot - mid)
             x0 = (cx - hw) + frac * hw
             x1 = (cx + hw) - frac * hw
         if x1 > x0:
             draw.line([(x0, y), (x1, y)], fill=color)
 
-    # --- Lock icon inside shield ---
-    lw = s * 0.18   # lock body width
-    lh = s * 0.16   # lock body height
+    # Right-edge highlight glint
+    for i in range(int(total_h) + 1):
+        y = top + i
+        t = i / total_h
+        if y <= mid:
+            x0 = cx + hw * 0.55
+            x1 = cx + hw
+        else:
+            frac = (y - mid) / (bot - mid)
+            x0 = cx + (hw - frac * hw) * 0.55
+            x1 = cx + (hw - frac * hw)
+        if x1 > x0 and x0 < x1:
+            draw.line([(x0, y), (x1, y)], fill=HIGHLIGHT)
+
+    # Lock body inside shield
+    lw = s * 0.20
+    lh = s * 0.17
     lx = cx - lw / 2
     ly = s * 0.52 - lh / 2
-
-    # Lock body
     draw.rounded_rectangle(
         [lx, ly, lx + lw, ly + lh],
-        radius=s * 0.03,
-        fill=WHITE + (230,),
+        radius=s * 0.030,
+        fill=WHITE,
     )
 
-    # Lock shackle (arc on top)
+    # Lock shackle
     arc_r = lw * 0.30
-    arc_cx = cx
-    arc_cy = ly
     arc_box = [
-        arc_cx - arc_r, arc_cy - arc_r * 1.1,
-        arc_cx + arc_r, arc_cy + arc_r * 0.5,
+        cx - arc_r, ly - arc_r * 1.1,
+        cx + arc_r, ly + arc_r * 0.5,
     ]
-    arc_w = max(1, int(s * 0.04))
-    draw.arc(arc_box, start=200, end=340, fill=WHITE + (230,), width=arc_w)
+    arc_w = max(1, int(s * 0.038))
+    draw.arc(arc_box, start=200, end=340, fill=WHITE, width=arc_w)
 
     # Keyhole dot
     dot_r = max(1, int(s * 0.025))
     draw.ellipse(
-        [cx - dot_r, ly + lh * 0.35 - dot_r,
-         cx + dot_r, ly + lh * 0.35 + dot_r],
+        [cx - dot_r, ly + lh * 0.32 - dot_r,
+         cx + dot_r, ly + lh * 0.32 + dot_r],
         fill=BG_COLOR + (200,),
     )
 
@@ -114,11 +118,9 @@ def main():
     sizes = [256, 128, 64, 48, 32, 16]
     images = [draw_icon(s) for s in sizes]
 
-    # Save PNG (largest size) for reference
     images[0].save(png_path)
     print(f"Saved PNG: {png_path}")
 
-    # Save ICO with all sizes
     images[0].save(
         ico_path,
         format="ICO",
