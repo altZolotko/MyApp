@@ -1,0 +1,87 @@
+name: Build Windows App
+
+# Собирает автономное Windows-приложение (VPNGov.exe) и установщик
+# на Windows-раннере GitHub. Ничего скачивать вручную не нужно —
+# wintun.dll встроена в репозиторий, Inno Setup ставится на раннере.
+#
+# Результаты:
+#   - Артефакт "VPNGov-Installer"  → dist/VPNGov_Setup_*.exe (установщик)
+#   - Артефакт "VPNGov-Portable"   → dist/VPNGov/ (переносимая версия .exe)
+#   - При пуше тега vX.Y.Z         → GitHub Release с установщиком
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - claude/lucid-lamport-gejwan
+    tags:
+      - "v*"
+  workflow_dispatch:        # ручной запуск кнопкой в Actions
+
+permissions:
+  contents: write           # нужно для создания Release при тегах
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build (icon + version + PyInstaller + installer)
+        run: .\build\build.ps1 -SkipMsix
+
+      - name: Verify build is self-contained
+        run: |
+          $exe = "dist\VPNGov\VPNGov.exe"
+          $dll = "dist\VPNGov\wintun.dll"
+          if (-not (Test-Path $exe)) { throw "VPNGov.exe не собран" }
+          if (-not (Test-Path $dll)) { throw "wintun.dll отсутствует в сборке — приложение не будет автономным" }
+          Write-Host "OK: VPNGov.exe и wintun.dll на месте"
+          Get-ChildItem dist -Recurse -File |
+            Where-Object { $_.Name -like "VPNGov_Setup_*.exe" -or $_.Name -eq "VPNGov.exe" } |
+            ForEach-Object { "{0,10:N0} KB  {1}" -f ($_.Length / 1KB), $_.FullName }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPNGov-Installer
+          path: dist/VPNGov_Setup_*.exe
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VPNGov-Portable
+          path: dist/VPNGov/
+          retention-days: 30
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/VPNGov_Setup_*.exe
+          generate_release_notes: true
