@@ -450,8 +450,6 @@ async def run_server(
     certs_dir: str = "certs",
 ) -> None:
     """Запускает VPN-сервер и сервер управления конфигурацией."""
-    setup_logger("DEBUG")
-
     try:
         with open(os.path.join(certs_dir, "ca.der"), "rb") as f:
             ca_cert_der = f.read()
@@ -461,8 +459,7 @@ async def run_server(
             server_prv_key = f.read()
     except FileNotFoundError as exc:
         _log.error("Сертификаты не найдены: %s", exc)
-        _log.error("Запустите: python -m utils.cert_gen")
-        sys.exit(2)
+        raise
 
     crypto = PygostProvider()
     codec = FrameCodec(crypto)
@@ -506,7 +503,10 @@ async def run_server(
 
 
 if __name__ == "__main__":
+    setup_logger("DEBUG")
     try:
         asyncio.run(run_server())
     except KeyboardInterrupt:
         _log.info("Сервер остановлен")
+    except FileNotFoundError:
+        sys.exit(2)

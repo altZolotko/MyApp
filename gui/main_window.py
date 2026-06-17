@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._config_path = config_path or get_default_config_path()
         self._worker: VpnWorker = None
+        self._server_worker = None
         self._elapsed: int = 0
         self._elapsed_timer = QTimer(self)
         self._elapsed_timer.setInterval(1000)
@@ -617,6 +618,8 @@ class MainWindow(QMainWindow):
     def _quit_app(self) -> None:
         if self._worker is not None:
             self._stop_worker()
+        if self._server_worker is not None:
+            self._server_worker.stop()
         if self._tray:
             self._tray.hide()
         QApplication.quit()
@@ -664,6 +667,29 @@ class MainWindow(QMainWindow):
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", certs_dir)
             )
 
+        # Auto-start embedded server when connecting to localhost
+        is_local = host in ("127.0.0.1", "localhost", "::1")
+        server_running = (
+            self._server_worker is not None and self._server_worker.isRunning()
+        )
+        if is_local and not server_running:
+            self._start_embedded_server(certs_dir)
+            self._set_controls_enabled(False)
+            self._power_btn.setState("connecting")
+            self._log_message("INFO", "Запуск встроенного сервера...")
+            # Give the server ~1 s to bind, then connect (client has 15 retries anyway)
+            QTimer.singleShot(1000, lambda: self._begin_connect(host, port, certs_dir))
+            return
+
+        self._begin_connect(host, port, certs_dir)
+
+    def _start_embedded_server(self, certs_dir: str) -> None:
+        from gui.server_worker import ServerWorker
+        self._server_worker = ServerWorker(certs_dir=certs_dir, parent=self)
+        self._server_worker.log_line.connect(self.on_log_line)
+        self._server_worker.start()
+
+    def _begin_connect(self, host: str, port: int, certs_dir: str) -> None:
         if self._radio_full.isChecked():
             if not is_admin():
                 QMessageBox.warning(
@@ -672,6 +698,8 @@ class MainWindow(QMainWindow):
                     "Полный туннельный режим требует прав Администратора.\n\n"
                     "Запустите приложение от имени Администратора.",
                 )
+                self._set_controls_enabled(True)
+                self._power_btn.setState("idle")
                 return
 
             self._worker = TunnelWorker(host, port, certs_dir, self._config_path)

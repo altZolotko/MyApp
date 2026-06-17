@@ -59,9 +59,11 @@ a = Analysis(
         # app modules
         "gui.main_window",
         "gui.power_button",
+        "gui.server_worker",
         "gui.styles",
         "gui.tunnel_worker",
         "gui.vpn_worker",
+        "server",
         "vpn_core.auth",
         "vpn_core.config_manager",
         "vpn_core.protocol",
