@@ -55,10 +55,14 @@ jobs:
       - name: Verify build is self-contained
         run: |
           $exe = "dist\VPNGov\VPNGov.exe"
-          $dll = "dist\VPNGov\wintun.dll"
           if (-not (Test-Path $exe)) { throw "VPNGov.exe не собран" }
-          if (-not (Test-Path $dll)) { throw "wintun.dll отсутствует в сборке — приложение не будет автономным" }
-          Write-Host "OK: VPNGov.exe и wintun.dll на месте"
+          # PyInstaller 6.x кладёт бандл-файлы в подпапку _internal, поэтому
+          # ищем wintun.dll рекурсивно по всей папке сборки.
+          $dll = Get-ChildItem -Path "dist\VPNGov" -Recurse -Filter "wintun.dll" |
+                 Select-Object -First 1
+          if (-not $dll) { throw "wintun.dll отсутствует в сборке — приложение не будет автономным" }
+          Write-Host "OK: VPNGov.exe на месте"
+          Write-Host "OK: wintun.dll на месте → $($dll.FullName)"
           Get-ChildItem dist -Recurse -File |
             Where-Object { $_.Name -like "VPNGov_Setup_*.exe" -or $_.Name -eq "VPNGov.exe" } |
             ForEach-Object { "{0,10:N0} KB  {1}" -f ($_.Length / 1KB), $_.FullName }

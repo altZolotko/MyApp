@@ -69,11 +69,18 @@ def get_default_config_path() -> str:
 def get_wintun_dll_path() -> str:
     """
     Путь к wintun.dll.
-    Поиск: рядом с .exe (установка) → встроенные ресурсы → CWD.
+    Поиск: встроенные ресурсы (_MEIPASS) → подпапка _internal рядом с .exe
+    → рядом с .exe → CWD.
+
+    PyInstaller 6.x (one-dir) размещает бандл-файлы в подпапке _internal,
+    а sys._MEIPASS указывает именно на неё — поэтому resource_root проверяется
+    первым. Доп. кандидат install_root/_internal — страховка на случай
+    нестандартной раскладки.
     """
     candidates = [
-        os.path.join(get_install_root(), "wintun.dll"),
         os.path.join(get_resource_root(), "wintun.dll"),
+        os.path.join(get_install_root(), "_internal", "wintun.dll"),
+        os.path.join(get_install_root(), "wintun.dll"),
         "wintun.dll",
     ]
     for path in candidates:
