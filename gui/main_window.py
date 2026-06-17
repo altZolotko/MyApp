@@ -52,6 +52,7 @@ from gui.styles import COLORS
 from gui.tunnel_worker import TunnelWorker
 from gui.vpn_worker import VpnWorker
 from vpn_core.tunnel import is_admin
+from utils.app_paths import get_default_certs_dir, get_default_config_path
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +163,9 @@ class MainWindow(QMainWindow):
     Primary application window for the GOST-VPN client GUI.
     """
 
-    def __init__(self, parent: QWidget = None):
+    def __init__(self, parent: QWidget = None, config_path: str = None):
         super().__init__(parent)
+        self._config_path = config_path or get_default_config_path()
         self._worker: VpnWorker = None
         self._elapsed: int = 0
         self._elapsed_timer = QTimer(self)
@@ -306,7 +308,7 @@ class MainWindow(QMainWindow):
 
         certs_row = QHBoxLayout()
         certs_row.setSpacing(4)
-        self._certs_edit = QLineEdit("certs")
+        self._certs_edit = QLineEdit(str(get_default_certs_dir()))
         self._certs_edit.setPlaceholderText("Путь к сертификатам")
         certs_row.addWidget(self._certs_edit, stretch=1)
         browse_btn = QPushButton("…")
@@ -598,7 +600,7 @@ class MainWindow(QMainWindow):
 
         host = self._host_edit.text().strip() or "127.0.0.1"
         port = self._port_spin.value()
-        certs_dir = self._certs_edit.text().strip() or "certs"
+        certs_dir = self._certs_edit.text().strip() or str(get_default_certs_dir())
 
         if not os.path.isabs(certs_dir):
             certs_dir = os.path.join(
@@ -617,15 +619,7 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            config_path = os.path.normpath(
-                os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)),
-                    "..",
-                    "config_bootstrap.json",
-                )
-            )
-
-            self._worker = TunnelWorker(host, port, certs_dir, config_path)
+            self._worker = TunnelWorker(host, port, certs_dir, self._config_path)
             self._worker.status_changed.connect(self.on_status_changed)
             self._worker.log_line.connect(self.on_log_line)
             self._worker.stats_updated.connect(self.on_stats_updated)

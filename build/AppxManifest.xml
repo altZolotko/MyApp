@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX-манифест для публикации VPN-клиента СКЗИ в Microsoft Store.
+
+  Перед упаковкой в MSIX замените:
+    - Publisher: "CN=YOUR_PUBLISHER_NAME" на ваш сертификат издателя
+    - PublisherDisplayName на название вашей компании
+    - Logo/SmallLogo/SplashScreen: убедитесь, что файлы существуют в папке Assets
+
+  Сборка:
+    makeappx pack /d dist\VPNGov_msix\ /p dist\VPNGov_1.0.0.msix
+    signtool sign /fd sha256 /a dist\VPNGov_1.0.0.msix
+
+  Требования Store: https://docs.microsoft.com/windows/msix/
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="mp uap uap3 rescap">
+
+  <Identity
+    Name="VPNResheniya.VPNGov"
+    Publisher="CN=YOUR_PUBLISHER_NAME"
+    Version="1.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <mp:PhoneIdentity
+    PhoneProductId="A7B3C2D1-1234-5678-ABCD-EF0123456789"
+    PhonePublisherId="00000000-0000-0000-0000-000000000000" />
+
+  <Properties>
+    <DisplayName>VPN-клиент СКЗИ</DisplayName>
+    <PublisherDisplayName>ООО ВПН-Решения</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>VPN-клиент с криптографией ГОСТ Р 34.12-2015 (Кузнечик) для защищённого туннелирования трафика.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.18362.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="ru-RU" />
+    <Resource Language="en-US" />
+  </Resources>
+
+  <Applications>
+    <Application Id="VPNGov" Executable="VPNGov.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="VPN-клиент СКЗИ"
+        Description="Защищённый VPN с криптографией ГОСТ"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\SmallTile.png"
+          Square310x310Logo="Assets\LargeTile.png"
+          ShortName="VPNGov">
+          <uap:ShowNameOnTiles>
+            <uap:ShowOn Tile="square150x150Logo" />
+            <uap:ShowOn Tile="wide310x150Logo" />
+          </uap:ShowNameOnTiles>
+        </uap:DefaultTile>
+        <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#0d0d0f" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Регистрация в меню «Пуск» -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="vpngov">
+            <uap:DisplayName>VPN-клиент СКЗИ</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      runFullTrust необходима для приложений, требующих прав администратора
+      (TUN/TAP-адаптер, WinTun). Требует одобрения Microsoft для Store.
+    -->
+    <rescap:Capability Name="runFullTrust" />
+
+    <!-- Сетевой доступ -->
+    <Capability Name="internetClient" />
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+  </Capabilities>
+
+</Package>

@@ -215,11 +215,13 @@ if sys.platform == "win32":
         # — Загрузка DLL ———————————————————————————————————————————————————
 
         def _load_dll(self):
+            from utils.app_paths import get_wintun_dll_path
+            dll_path = get_wintun_dll_path()
             try:
-                dll = ctypes.WinDLL("wintun.dll")
+                dll = ctypes.WinDLL(str(dll_path))
             except OSError:
                 raise OSError(
-                    "wintun.dll не найден.\n"
+                    f"wintun.dll не найден (проверено: {dll_path}).\n"
                     "Скачайте архив с https://www.wintun.net/ , распакуйте wintun.dll "
                     "(amd64/wintun.dll) рядом с программой."
                 )
